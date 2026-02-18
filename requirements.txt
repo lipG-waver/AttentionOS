@@ -1,0 +1,47 @@
+# ============================================
+# 注意力管理Agent - 依赖清单
+# pip install -r requirements.txt
+# ============================================
+
+# --- 核心 ---
+requests>=2.28.0
+python-dotenv>=1.0.0
+Pillow>=9.0.0
+mss>=9.0.0
+
+# --- 活动监控 ---
+pynput>=1.7.6
+psutil>=5.9.0
+
+# --- Web服务 (FastAPI + uvicorn) ---
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+# uvicorn[standard] 会自动安装: websockets, httptools, watchfiles 等
+# 确保 WebSocket 和高性能 HTTP 解析都可用
+
+# --- 托盘图标 ---
+pystray>=0.19.0
+# 如果 pystray 安装失败，程序会自动回退到无托盘模式
+# macOS 上 pystray 需要 Pillow（已包含在上方）
+
+# --- OpenAI 兼容 API (用于 app_database.py / 截图分析) ---
+openai>=1.0.0
+
+# --- 语音识别 (SenseVoice — ModelScope 生态) ---
+# SenseVoice 支持中英日韩 50+ 语言 + 情感识别
+# 如果不需要语音功能可跳过安装（程序会自动降级）
+funasr>=1.0.0
+modelscope>=1.10.0
+
+# ============================================
+# 平台专属依赖（按需安装）
+# ============================================
+
+# macOS（获取焦点窗口需要）:
+#   pip install pyobjc-framework-Quartz pyobjc-framework-Cocoa
+
+# Windows（获取焦点窗口需要）:
+#   pip install pywin32
+
+# Linux（获取焦点窗口需要）:
+#   pip install python-xlib
