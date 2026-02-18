@@ -619,14 +619,20 @@ def _init_macos_app():
 def main():
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-    # 清除父进程传递的 tkinter 禁用标记（该标记仅用于保护父进程主线程）
-    os.environ.pop("ATTENTION_OS_NO_TKINTER", None)
-
     log(f"对话悬浮窗子进程启动 (platform={SYSTEM})")
 
     force_headless = os.environ.get("ATTENTION_OS_CHAT_OVERLAY_FORCE_HEADLESS") == "1"
     if force_headless:
         log("检测到 ATTENTION_OS_CHAT_OVERLAY_FORCE_HEADLESS=1，使用 headless 模式")
+        run_headless()
+        return
+
+    # macOS 保护：父进程可显式禁用 tkinter（例如已知 Tk 崩溃环境）
+    # 允许通过 ATTENTION_OS_CHAT_OVERLAY_ALLOW_TKINTER=1 手动覆盖。
+    no_tkinter = os.environ.get("ATTENTION_OS_NO_TKINTER") == "1"
+    allow_tkinter = os.environ.get("ATTENTION_OS_CHAT_OVERLAY_ALLOW_TKINTER") == "1"
+    if SYSTEM == "Darwin" and no_tkinter and not allow_tkinter:
+        log("检测到 ATTENTION_OS_NO_TKINTER=1，跳过 tkinter，使用 headless 模式")
         run_headless()
         return
 
