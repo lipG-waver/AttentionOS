@@ -29,6 +29,7 @@
 """
 import json
 import math
+import os
 import platform
 import signal
 import sys
@@ -619,10 +620,15 @@ def main():
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     # 清除父进程传递的 tkinter 禁用标记（该标记仅用于保护父进程主线程）
-    import os
     os.environ.pop("ATTENTION_OS_NO_TKINTER", None)
 
-    log(f"对话悬浮窗子进程启动 (platform={SYSTEM})")
+    force_headless = os.environ.get("ATTENTION_OS_CHAT_OVERLAY_FORCE_HEADLESS") == "1"
+
+    log(f"对话悬浮窗子进程启动 (platform={SYSTEM}, force_headless={force_headless})")
+
+    if force_headless:
+        run_headless()
+        return
 
     # macOS: 必须先初始化 NSApplication，否则 tkinter 窗口不可见
     _init_macos_app()

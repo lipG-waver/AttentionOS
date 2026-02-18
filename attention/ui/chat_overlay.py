@@ -15,10 +15,13 @@
 """
 import json
 import logging
+import os
+import platform
 import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Callable, Dict, Any
@@ -42,6 +45,9 @@ class ChatOverlay:
         self._running = False
         self._lock = threading.Lock()
         self._ready = threading.Event()
+        self._stderr_tail: deque[str] = deque(maxlen=40)
+        self._force_headless = False
+        self._rapid_crash_count = 0
 
         # 对话 Agent
         self._agent: DialogueAgent = get_dialogue_agent()
@@ -193,13 +199,21 @@ class ChatOverlay:
         script = Path(__file__).parent / "chat_overlay_process.py"
 
         while self._running:
+            start_at = time.time()
             try:
+                self._ready.clear()
+                self._stderr_tail.clear()
+                child_env = os.environ.copy()
+                if self._force_headless:
+                    child_env["ATTENTION_OS_CHAT_OVERLAY_FORCE_HEADLESS"] = "1"
+
                 self._proc = subprocess.Popen(
                     [sys.executable, str(script)],
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    env=child_env,
                 )
                 logger.info(f"对话悬浮窗子进程启动 (PID={self._proc.pid})")
 
@@ -212,6 +226,37 @@ class ChatOverlay:
 
                 # 读取子进程输出
                 self._read_loop()
+
+                # 输出退出原因，便于定位偶发崩溃
+                proc = self._proc
+                if proc is not None:
+                    self._proc = None
+                return_code = proc.returncode if proc else None
+                uptime = time.time() - start_at
+                if self._running:
+                    tail = "\n".join(self._stderr_tail)
+                    logger.warning(
+                        "对话悬浮窗子进程异常退出 (code=%s, uptime=%.1fs)\n最近 stderr:\n%s",
+                        return_code,
+                        uptime,
+                        tail if tail else "<empty>",
+                    )
+
+                    # macOS 下若 tkinter 快速崩溃（常见 NSException/SIGABRT），自动降级 headless
+                    if (
+                        platform.system() == "Darwin"
+                        and not self._force_headless
+                        and return_code in (-6, 134)
+                        and uptime < 3
+                    ):
+                        self._rapid_crash_count += 1
+                        if self._rapid_crash_count >= 2:
+                            self._force_headless = True
+                            logger.warning(
+                                "检测到 macOS tkinter 子进程连续崩溃，已自动降级为 headless 模式以停止重启风暴"
+                            )
+                    else:
+                        self._rapid_crash_count = 0
 
             except Exception as e:
                 logger.error(f"启动子进程失败: {e}")
@@ -227,6 +272,7 @@ class ChatOverlay:
             for line in proc.stderr:
                 line = line.strip()
                 if line:
+                    self._stderr_tail.append(line)
                     logger.debug(f"[overlay子进程] {line}")
         except Exception:
             pass
@@ -259,7 +305,6 @@ class ChatOverlay:
                 proc.wait(timeout=3)
             except Exception:
                 proc.kill()
-            self._proc = None
 
     def _handle_child_message(self, msg: dict):
         """处理子进程发来的消息"""
@@ -267,6 +312,7 @@ class ChatOverlay:
 
         if msg_type == "ready":
             self._ready.set()
+            self._rapid_crash_count = 0
             logger.info("对话悬浮窗已就绪")
 
             # 发送欢迎消息
