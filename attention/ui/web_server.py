@@ -1059,6 +1059,131 @@ async def get_current_plan():
     return planner.get_active_plan()
 
 
+# ==================== API 设置管理 ====================
+
+@app.get("/api/settings/providers")
+@_safe_route
+async def get_providers():
+    """获取所有 LLM 提供商配置"""
+    from attention.core.api_settings import get_api_settings
+    mgr = get_api_settings()
+    return {"providers": mgr.get_all_configs()}
+
+
+@app.post("/api/settings/providers/{provider}/key")
+@_safe_route
+async def set_provider_key(provider: str, request: Request):
+    """设置指定提供商的 API key"""
+    from attention.core.api_settings import get_api_settings
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    api_key = body.get("api_key", "").strip()
+    if not api_key:
+        return {"success": False, "error": "API key 不能为空"}
+    mgr = get_api_settings()
+    ok = mgr.set_api_key(provider, api_key)
+    return {"success": ok}
+
+
+@app.post("/api/settings/providers/{provider}/test")
+@_safe_route
+async def test_provider_key(provider: str, request: Request):
+    """测试指定提供商的 API key 连通性"""
+    from attention.core.api_settings import get_api_settings
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    api_key = body.get("api_key", "").strip() or None
+    mgr = get_api_settings()
+    result = mgr.test_api_key(provider, api_key)
+    return result
+
+
+@app.post("/api/settings/providers/active")
+@_safe_route
+async def set_active_provider(request: Request):
+    """设置当前激活的 LLM 提供商"""
+    from attention.core.api_settings import get_api_settings
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    provider = body.get("provider", "").strip()
+    if not provider:
+        return {"success": False, "error": "请指定提供商"}
+    mgr = get_api_settings()
+    ok = mgr.set_active_provider(provider)
+    if not ok:
+        return {"success": False, "error": "该提供商未配置 API key"}
+    return {"success": True, "active_provider": provider}
+
+
+# ==================== 随手记 API ====================
+
+@app.post("/api/memo/save")
+@_safe_route
+async def save_memo(request: Request):
+    """保存随手记内容到长期记忆（Markdown 格式）"""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    content = body.get("content", "").strip()
+    if not content:
+        return {"success": False, "error": "内容不能为空"}
+
+    # 保存为 Markdown 文件到 data/memos/
+    memo_dir = Config.DATA_DIR / "memos"
+    memo_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"memo_{timestamp}.md"
+    filepath = memo_dir / filename
+
+    # 构建 Markdown 内容
+    md_content = f"# 随手记 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n{content}\n"
+    filepath.write_text(md_content, encoding="utf-8")
+
+    return {
+        "success": True,
+        "path": str(filepath),
+        "filename": filename,
+        "message": f"已保存到 {filename}",
+    }
+
+
+@app.get("/api/memo/list")
+@_safe_route
+async def list_memos():
+    """获取所有随手记列表"""
+    memo_dir = Config.DATA_DIR / "memos"
+    if not memo_dir.exists():
+        return {"memos": []}
+
+    memos = []
+    for f in sorted(memo_dir.glob("memo_*.md"), reverse=True):
+        try:
+            text = f.read_text(encoding="utf-8")
+            # 提取预览（跳过标题行）
+            lines = text.strip().split("\n")
+            preview = ""
+            for line in lines:
+                if not line.startswith("#") and line.strip():
+                    preview = line.strip()[:100]
+                    break
+            memos.append({
+                "filename": f.name,
+                "preview": preview,
+                "created": f.stat().st_mtime,
+            })
+        except Exception:
+            pass
+
+    return {"memos": memos[:50]}  # 最多返回 50 条
+
+
 # ==================== 静态文件 ====================
 
 static_dir = Config.BASE_DIR / "static"
