@@ -32,11 +32,29 @@ python run.py
 
 首次启动时会弹出**每日 Briefing**，引导你设定今日目标。
 
-### macOS 权限
+### 各平台说明
 
+#### Windows（原生）
+开箱即用，截图使用 `mss`，无需额外配置。
+
+#### macOS
 首次运行需授权：
 - **屏幕录制**：系统偏好设置 → 隐私与安全性 → 屏幕录制 → 勾选 Terminal/IDE
 - **辅助功能**：系统偏好设置 → 隐私与安全性 → 辅助功能 → 勾选 Terminal/IDE
+
+#### Linux（原生桌面）
+需要安装系统级截图工具：
+```bash
+sudo apt install scrot   # X11 环境
+# 或
+sudo apt install grim    # Wayland 环境
+```
+
+#### WSL2（Windows Subsystem for Linux）
+WSL2 下 `mss`/PIL 的 `XGetImage()` 因 WSLg 虚拟显示层限制而无法使用。  
+本项目已内置自动检测：**在 WSL2 下自动调用 `powershell.exe` 通过 Windows GDI+ 完成截图**，无需任何额外安装。
+
+> 注意：请在 WSL2 终端中运行 `python run.py`，不要使用 Windows 侧的 Python 解释器。
 
 ---
 

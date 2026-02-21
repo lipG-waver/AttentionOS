@@ -8,14 +8,8 @@ import logging
 import time
 from dataclasses import dataclass, asdict
 from typing import Optional, Dict, Any
-import os
 
-os.environ.pop('HTTP_PROXY', None)
-os.environ.pop('HTTPS_PROXY', None)
-os.environ.pop('http_proxy', None)
-os.environ.pop('https_proxy', None)
-
-import requests
+from openai import OpenAI
 
 from attention.config import Config
 
@@ -75,12 +69,13 @@ class AnalysisResult:
 
 class ScreenAnalyzer:
     """屏幕分析器"""
-    
+
     def __init__(self):
         self.config = Config
-        self.api_base = self.config.QWEN_API_BASE
-        self.api_key = self.config.QWEN_API_KEY
-        self.model = self.config.MODEL_NAME
+        self._client = OpenAI(
+            base_url=self.config.QWEN_API_BASE,
+            api_key=self.config.QWEN_API_KEY,
+        )
     
     def analyze(self, image_data: bytes) -> tuple[AnalysisResult, str]:
         """
@@ -110,54 +105,28 @@ class ScreenAnalyzer:
         return AnalysisResult(details="分析失败，已达最大重试次数"), ""
     
     def _call_api(self, image_data: bytes) -> str:
-        """调用Qwen-VL API"""
-        # 将图像转为base64
+        """调用 Qwen-VL API（使用 openai 客户端）"""
         image_base64 = base64.b64encode(image_data).decode("utf-8")
-        
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "model": self.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{image_base64}"
-                            }
-                        },
-                        {
-                            "type": "text",
-                            "text": ANALYSIS_PROMPT
-                        }
-                    ]
-                }
-            ],
-            "max_tokens": 1000,
-            "temperature": 0.3
-        }
-        
-        with requests.Session() as session:
-            session.trust_env = False  # 核心修复：这行代码告诉 requests 彻底忽略 VPN 和系统代理
-            
-            response = session.post(
-                f"{self.api_base}/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=self.config.REQUEST_TIMEOUT
-            )
-        
-        response.raise_for_status()
-        result = response.json()
-        
-        # 提取响应内容
-        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-        return content
+
+        response = self._client.chat.completions.create(
+            model=self.config.MODEL_NAME,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
+                    },
+                    {
+                        "type": "text",
+                        "text": ANALYSIS_PROMPT,
+                    },
+                ],
+            }],
+            max_tokens=1000,
+            temperature=0.3,
+        )
+        return response.choices[0].message.content
     
     def _parse_response(self, response: str) -> AnalysisResult:
         """解析模型响应"""

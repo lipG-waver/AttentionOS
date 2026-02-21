@@ -65,7 +65,7 @@ DEFAULT_CONFIGS: Dict[str, ProviderConfig] = {
         provider=LLMProvider.MODELSCOPE,
         api_base="https://api-inference.modelscope.cn/v1",
         text_model="Qwen/Qwen2.5-72B-Instruct",
-        vision_model="Qwen/Qwen2.5-VL-72B-Instruct",
+        vision_model="Qwen/Qwen3-VL-235B-A22B-Instruct",
         display_name="ModelScope 魔搭",
     ),
     LLMProvider.DASHSCOPE: ProviderConfig(

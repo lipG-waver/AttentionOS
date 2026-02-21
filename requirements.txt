@@ -8,6 +8,10 @@ requests>=2.28.0
 python-dotenv>=1.0.0
 Pillow>=9.0.0
 mss>=9.0.0
+pyscreenshot>=0.4.2
+# pyscreenshot 用于 Linux/WSL2 下的截图回退方案
+# 它会自动探测系统中可用的截图工具（scrot / grim / gnome-screenshot 等）
+# Windows/macOS 下由 mss 优先处理，此库作为最终兜底
 
 # --- 活动监控 ---
 pynput>=1.7.6
