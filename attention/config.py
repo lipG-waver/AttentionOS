@@ -15,7 +15,7 @@ class Config:
     # API配置 — 统一使用 ModelScope 生态模型
     QWEN_API_BASE = "https://api-inference.modelscope.cn/v1"  # 魔塔社区 API Inference
     QWEN_API_KEY = os.getenv("MODELSCOPE_ACCESS_TOKEN", "")   # 统一使用 MODELSCOPE_ACCESS_TOKEN
-    MODEL_NAME = "Qwen/Qwen2.5-VL-72B-Instruct"              # 视觉模型（截屏分析）
+    MODEL_NAME = "Qwen/Qwen3-VL-235B-A22B-Instruct"             # 视觉模型（截屏分析）
     TEXT_MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"             # 文本模型（任务解析、提醒生成、回顾等）
     SENSEVOICE_MODEL = "iic/SenseVoiceSmall"                   # 语音模型（语音识别 + 情感检测）
     
