@@ -158,6 +158,7 @@ def run_tkinter():
         "messages": [],        # [{role, content, msg_type, timestamp}]
         "unread": 0,           # 未读消息数
         "pulse_angle": 0.0,    # 呼吸动画角度
+        "mode": "ai",          # ai | memo | focus
     }
 
     screen_w = root.winfo_screenwidth()
@@ -243,6 +244,48 @@ def run_tkinter():
     send_btn = tk.Label(input_frame, text="↑", font=(FONT_FAMILY, 16, "bold"),
                         fg=GREEN, bg=BG_INPUT, cursor="hand2", padx=6, pady=2)
     send_btn.place(relx=1.0, rely=0.5, anchor="e", x=-14)
+
+    # ─── 模式标签栏（随手记 / 问 AI / 专注模式）───
+    mode_frame = tk.Frame(chat_frame, bg=BG_DARK, height=32)
+    mode_frame.pack(fill="x", side="bottom")
+    mode_frame.pack_propagate(False)
+
+    MODE_DEFS = [
+        ("memo",  "📝 随手记"),
+        ("ai",    "🤖 问 AI"),
+        ("focus", "🎯 专注"),
+    ]
+    mode_btns = {}
+
+    def set_mode_ui(m):
+        state["mode"] = m
+        for key, btn in mode_btns.items():
+            if key == m:
+                btn.config(fg=GREEN, bg=BG_PANEL)
+            else:
+                btn.config(fg=TEXT_DIM, bg=BG_DARK)
+        # 更新输入框占位文字颜色提示
+        placeholders = {
+            "memo":  "记下灵感，保存为笔记...",
+            "ai":    "和 AI 聊聊...",
+            "focus": "快速记录想法，不打断专注...",
+        }
+        input_entry.config(fg=TEXT_PRIMARY)
+
+    for mode_key, mode_label in MODE_DEFS:
+        is_active = (mode_key == "ai")
+        btn = tk.Label(
+            mode_frame,
+            text=mode_label,
+            font=(FONT_FAMILY, 10),
+            fg=GREEN if is_active else TEXT_DIM,
+            bg=BG_PANEL if is_active else BG_DARK,
+            cursor="hand2",
+            padx=10, pady=4,
+        )
+        btn.pack(side="left", fill="y")
+        btn.bind("<Button-1>", lambda e, m=mode_key: set_mode_ui(m))
+        mode_btns[mode_key] = btn
 
     # ─── 消息渲染 ───
     def render_messages():
@@ -356,8 +399,8 @@ def run_tkinter():
         user_msg = {"role": "user", "content": text, "msg_type": "chat", "timestamp": ts}
         add_message(user_msg)
 
-        # 发送给父进程
-        emit({"type": "user_message", "text": text})
+        # 发送给父进程（包含当前模式）
+        emit({"type": "user_message", "text": text, "mode": state["mode"]})
 
     input_entry.bind("<Return>", send_message)
     send_btn.bind("<Button-1>", lambda e: send_message())
@@ -538,6 +581,11 @@ def run_tkinter():
 
             elif act == "set_mood":
                 state["mood"] = cmd.get("mood", "normal")
+
+            elif act == "set_mode":
+                m = cmd.get("mode", "ai")
+                if m in ("ai", "memo", "focus"):
+                    set_mode_ui(m)
 
             elif act == "quit":
                 try:

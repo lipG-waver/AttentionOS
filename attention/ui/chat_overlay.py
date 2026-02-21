@@ -123,7 +123,7 @@ class ChatOverlay:
         self._send_ai_message(msg, msg_type="status")
 
     def on_focus_started(self, task: str, duration_min: int):
-        """专注模式开始 — 发送欢迎消息"""
+        """专注模式开始 — 发送欢迎消息，切换到专注模式标签"""
         msg = self._agent.focus_start_message(task, duration_min)
         self._send_ai_message(msg, msg_type="status")
         self._agent.update_context(
@@ -131,9 +131,11 @@ class ChatOverlay:
             focus_task=task,
             focus_remaining_seconds=duration_min * 60,
         )
+        # 自动切换悬浮窗到专注模式标签
+        self._send({"cmd": "set_mode", "mode": "focus"})
 
     def on_focus_ended(self, task: str, duration_min: int, completed: bool):
-        """专注模式结束 — 发送总结消息"""
+        """专注模式结束 — 发送总结消息，切回 AI 对话标签"""
         msg = self._agent.focus_end_message(task, duration_min, completed)
         self._send_ai_message(msg, msg_type="status")
         self._agent.update_context(
@@ -141,6 +143,8 @@ class ChatOverlay:
             focus_task="",
             focus_remaining_seconds=0,
         )
+        # 切回 AI 对话标签
+        self._send({"cmd": "set_mode", "mode": "ai"})
 
     def update_timer(self, time_text: str, phase: str, progress: float):
         """更新计时器显示（番茄钟/休息）"""
@@ -321,11 +325,12 @@ class ChatOverlay:
 
         elif msg_type == "user_message":
             text = msg.get("text", "")
+            mode = msg.get("mode", "ai")
             if text:
                 # 异步处理用户消息
                 threading.Thread(
                     target=self._process_user_message,
-                    args=(text,),
+                    args=(text, mode),
                     daemon=True
                 ).start()
 
@@ -341,15 +346,37 @@ class ChatOverlay:
             # 定期保存日志
             self._maybe_save_log()
 
-    def _process_user_message(self, text: str):
+    def _process_user_message(self, text: str, mode: str = "ai"):
         """处理用户消息（异步，在后台线程）"""
         try:
-            response = self._agent.user_message(text)
+            if mode == "memo":
+                response = self._handle_memo_save(text)
+            elif mode == "focus":
+                response = self._agent.capture_thought(text)
+            else:
+                response = self._agent.user_message(text)
             if response:
                 self._send_ai_message(response)
         except Exception as e:
             logger.error(f"处理用户消息失败: {e}")
             self._send_ai_message("抱歉，出了点小问题。不过你的消息已记录 📝")
+
+    def _handle_memo_save(self, text: str) -> str:
+        """将文本保存为随手记 Markdown 文件"""
+        try:
+            from attention.config import Config
+            from datetime import datetime as _dt
+            memo_dir = Config.DATA_DIR / "memos"
+            memo_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = _dt.now().strftime("%Y-%m-%d_%H-%M-%S")
+            filepath = memo_dir / f"memo_{timestamp}.md"
+            md_content = f"# 随手记 {_dt.now().strftime('%Y-%m-%d %H:%M')}\n\n{text}\n"
+            filepath.write_text(md_content, encoding="utf-8")
+            logger.info(f"随手记已保存: {filepath.name}")
+            return f"✅ 已保存到随手记 📝"
+        except Exception as e:
+            logger.error(f"保存随手记失败: {e}")
+            return "❌ 保存失败，请稍后再试"
 
     def _handle_action(self, action: str):
         """处理用户操作"""

@@ -231,6 +231,30 @@ class DialogueAgent:
         self._add_message("assistant", msg, msg_type="status")
         return msg
 
+    def capture_thought(self, text: str) -> str:
+        """
+        专注模式思维捕捉（公开接口）— 不调用 LLM，立即返回确认。
+        供外部在用户选择"专注"模式标签时直接调用。
+        """
+        text = text.strip()
+        if not text:
+            return ""
+        ctx = self.get_context()
+
+        self._add_message("user", text, msg_type="thought_capture")
+        with self._lock:
+            self._pending_thoughts.append(text)
+
+        remaining = ctx.focus_remaining_seconds
+        if remaining > 0:
+            mins = remaining // 60
+            confirm = f"📌 已记录！继续专注，还剩 {mins} 分钟 💪"
+        else:
+            confirm = "📌 已记录！"
+
+        self._add_message("assistant", confirm, msg_type="thought_capture")
+        return confirm
+
     # ---- 历史管理 ----
 
     def get_history(self) -> List[Dict]:
