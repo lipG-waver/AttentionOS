@@ -166,6 +166,81 @@ class MultiLLMClient:
         return True
 
     # ---------------------------------------------------------------- #
+    #  内部 — 提供商回退链
+    # ---------------------------------------------------------------- #
+
+    def _get_fallback_chain(self, primary: str, requires_vision: bool = False) -> List[str]:
+        """
+        构建提供商回退链。
+
+        Args:
+            primary:         首选提供商名称
+            requires_vision: 若为 True，则只包含配置了视觉模型的提供商
+
+        Returns:
+            按优先级排列的提供商名称列表（首个为 primary）
+        """
+        chain: List[str] = []
+        # 首选提供商排首位
+        primary_cfg = self._configs.get(primary)
+        if primary_cfg and primary_cfg.api_key:
+            if not requires_vision or primary_cfg.vision_model:
+                chain.append(primary)
+        # 其余已配置 API key 的提供商依次追加
+        for prov, cfg in self._configs.items():
+            if prov == primary:
+                continue
+            if not cfg.api_key:
+                continue
+            if requires_vision and not cfg.vision_model:
+                continue
+            chain.append(prov)
+        return chain
+
+    def _chat_with_provider(
+        self,
+        provider: str,
+        prompt: str,
+        *,
+        system: Optional[str] = None,
+        model: Optional[str] = None,
+        max_tokens: int,
+        temperature: float,
+        timeout: int,
+        retries: int,
+    ) -> str:
+        """对指定提供商执行带重试的文本对话，失败则抛出异常。"""
+        cfg = self._configs.get(provider)
+        if not cfg or not cfg.api_key:
+            raise RuntimeError(f"提供商 {provider} 未配置 API key")
+
+        use_model = model or cfg.text_model
+        messages: List[dict] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        last_err: Optional[Exception] = None
+        for attempt in range(1 + retries):
+            try:
+                return self._post(
+                    cfg=cfg,
+                    model=use_model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    timeout=timeout,
+                )
+            except Exception as e:
+                last_err = e
+                logger.warning(f"LLM chat 第 {attempt+1} 次失败 [{provider}]: {e}")
+                if attempt < retries:
+                    time.sleep(2)
+        raise RuntimeError(
+            f"LLM chat 调用失败（{provider}，已重试 {retries} 次）: {last_err}"
+        )
+
+    # ---------------------------------------------------------------- #
     #  文本对话
     # ---------------------------------------------------------------- #
 
@@ -184,6 +259,8 @@ class MultiLLMClient:
         """
         文本对话，返回模型生成的纯文本。
 
+        若未指定 provider，则在激活提供商失败后自动回退到其他已配置的提供商。
+
         Args:
             prompt:      用户消息
             system:      可选的 system prompt
@@ -191,41 +268,43 @@ class MultiLLMClient:
             max_tokens:  最大生成 token 数
             temperature: 采样温度
             timeout:     请求超时秒数
-            retries:     失败重试次数
-            provider:    指定提供商（默认使用当前激活的）
+            retries:     每个提供商的失败重试次数
+            provider:    指定提供商（指定后不启用自动回退）
 
         Returns:
             模型生成的文本内容
         """
-        provider = provider or self._active_provider
-        cfg = self._configs.get(provider)
-        if not cfg or not cfg.api_key:
-            raise RuntimeError(f"提供商 {provider} 未配置 API key")
+        # 显式指定提供商时，不启用回退
+        if provider is not None:
+            return self._chat_with_provider(
+                provider, prompt,
+                system=system, model=model,
+                max_tokens=max_tokens, temperature=temperature,
+                timeout=timeout, retries=retries,
+            )
 
-        model = model or cfg.text_model
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
+        # 未指定时，构建回退链
+        chain = self._get_fallback_chain(self._active_provider, requires_vision=False)
+        if not chain:
+            raise RuntimeError("没有可用的提供商，请先在设置中配置 API key")
 
-        last_err = None
-        for attempt in range(1 + retries):
+        last_err: Optional[Exception] = None
+        for prov in chain:
             try:
-                resp = self._post(
-                    cfg=cfg,
-                    model=model,
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    timeout=timeout,
+                result = self._chat_with_provider(
+                    prov, prompt,
+                    system=system, model=model,
+                    max_tokens=max_tokens, temperature=temperature,
+                    timeout=timeout, retries=retries,
                 )
-                return resp
+                if prov != self._active_provider:
+                    logger.info(f"已切换到备用提供商 [{prov}] 完成 chat 请求")
+                return result
             except Exception as e:
                 last_err = e
-                logger.warning(f"LLM chat 第 {attempt+1} 次失败 [{provider}]: {e}")
-                if attempt < retries:
-                    time.sleep(2)
-        raise RuntimeError(f"LLM chat 调用失败（{provider}，已重试 {retries} 次）: {last_err}")
+                logger.warning(f"提供商 [{prov}] 全部重试耗尽，尝试下一个备用提供商: {e}")
+
+        raise RuntimeError(f"所有提供商均调用失败: {last_err}")
 
     def chat_json(self, prompt: str, **kwargs) -> dict:
         """文本对话，自动解析返回的 JSON"""
@@ -251,19 +330,23 @@ class MultiLLMClient:
         image_type: str = "image/jpeg",
         max_tokens: int = 800,
         timeout: int = 30,
+        retries: int = 2,
         provider: Optional[str] = None,
     ) -> str:
         """
         视觉分析：接收一张图片 + 文本提示，返回模型输出。
+
+        若未指定 provider，则在激活提供商失败后自动回退到其他支持视觉的提供商。
+
+        Args:
+            prompt:       文本提示
+            image_base64: base64 编码的图片数据
+            image_type:   图片 MIME 类型（默认 image/jpeg）
+            max_tokens:   最大生成 token 数
+            timeout:      请求超时秒数
+            retries:      每个提供商的失败重试次数
+            provider:     指定提供商（指定后不启用自动回退）
         """
-        provider = provider or self._active_provider
-        cfg = self._configs.get(provider)
-        if not cfg or not cfg.api_key:
-            raise RuntimeError(f"提供商 {provider} 未配置 API key")
-
-        if not cfg.vision_model:
-            raise RuntimeError(f"提供商 {provider} 不支持视觉模型")
-
         messages = [
             {
                 "role": "user",
@@ -278,14 +361,54 @@ class MultiLLMClient:
                 ],
             }
         ]
-        return self._post(
-            cfg=cfg,
-            model=cfg.vision_model,
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=0.3,
-            timeout=timeout,
-        )
+
+        def _call_one(prov: str) -> str:
+            cfg = self._configs.get(prov)
+            if not cfg or not cfg.api_key:
+                raise RuntimeError(f"提供商 {prov} 未配置 API key")
+            if not cfg.vision_model:
+                raise RuntimeError(f"提供商 {prov} 不支持视觉模型")
+            last_err: Optional[Exception] = None
+            for attempt in range(1 + retries):
+                try:
+                    return self._post(
+                        cfg=cfg,
+                        model=cfg.vision_model,
+                        messages=messages,
+                        max_tokens=max_tokens,
+                        temperature=0.3,
+                        timeout=timeout,
+                    )
+                except Exception as e:
+                    last_err = e
+                    logger.warning(f"vision 第 {attempt+1} 次失败 [{prov}]: {e}")
+                    if attempt < retries:
+                        time.sleep(2)
+            raise RuntimeError(
+                f"vision 调用失败（{prov}，已重试 {retries} 次）: {last_err}"
+            )
+
+        # 显式指定提供商时，不启用回退
+        if provider is not None:
+            return _call_one(provider)
+
+        # 构建视觉提供商回退链
+        chain = self._get_fallback_chain(self._active_provider, requires_vision=True)
+        if not chain:
+            raise RuntimeError("没有支持视觉的可用提供商，请先配置 API key")
+
+        last_err: Optional[Exception] = None
+        for prov in chain:
+            try:
+                result = _call_one(prov)
+                if prov != self._active_provider:
+                    logger.info(f"已切换到备用提供商 [{prov}] 完成 vision 请求")
+                return result
+            except Exception as e:
+                last_err = e
+                logger.warning(f"提供商 [{prov}] vision 全部重试耗尽，尝试下一个备用提供商: {e}")
+
+        raise RuntimeError(f"所有视觉提供商均调用失败: {last_err}")
 
     # ---------------------------------------------------------------- #
     #  API key 连通性测试
