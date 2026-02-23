@@ -80,6 +80,40 @@
             if (name === 'plugins') { loadPlugins(); }
         }
 
+        function jumpToTab(name) {
+            const btn = document.querySelector('.nav-tab[onclick*="\'' + name + '\'"]');
+            switchTab(name, btn || null);
+            closeOnboarding();
+            window.scrollTo({top: 0, behavior: 'smooth'});
+        }
+
+
+        // ==================== FIRST-USE ONBOARDING ====================
+        function shouldShowOnboarding() {
+            try {
+                if (localStorage.getItem('aos-onboarding-disabled') === '1') return false;
+                return localStorage.getItem('aos-onboarding-complete') !== '1';
+            } catch(e) { return true; }
+        }
+        function openOnboarding() {
+            const modal = document.getElementById('onboardingModal');
+            if (modal) modal.classList.add('show');
+        }
+        function closeOnboarding() {
+            const modal = document.getElementById('onboardingModal');
+            if (modal) modal.classList.remove('show');
+        }
+        function finishOnboarding() {
+            try {
+                localStorage.setItem('aos-onboarding-complete', '1');
+                const neverShow = document.getElementById('onboardingDontShow');
+                if (neverShow && neverShow.checked) {
+                    localStorage.setItem('aos-onboarding-disabled', '1');
+                }
+            } catch(e) {}
+            closeOnboarding();
+        }
+
         // ==================== INIT ====================
         var chartsInitialized = false;
         function ensureChartsInit() {
@@ -98,6 +132,9 @@
             loadCheckinSettings();
             loadPomoStatus();
             connectWebSocket();
+            if (shouldShowOnboarding()) {
+                setTimeout(openOnboarding, 700);
+            }
             setInterval(() => { if (chartsInitialized) loadData(); }, 30000);
             setInterval(loadPomoStatus, 1000);
         });

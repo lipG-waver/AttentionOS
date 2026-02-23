@@ -77,6 +77,50 @@
         </div>
     </div>
 
+    <!-- First-use guide -->
+    <div class="modal-overlay" id="onboardingModal">
+        <div class="modal onboarding-modal">
+            <div class="onboarding-head">
+                <div>
+                    <div class="onboarding-kicker">欢迎来到 Attention OS</div>
+                    <h2>3 分钟上手，让系统真正帮你专注</h2>
+                    <div class="date-sub">建议首次使用按顺序完成下面三步。</div>
+                </div>
+                <button class="btn btn-sm" onclick="closeOnboarding()">稍后</button>
+            </div>
+            <div class="onboarding-steps">
+                <div class="onboarding-step">
+                    <div class="step-num">1</div>
+                    <div>
+                        <div class="step-title">添加今天最重要的任务</div>
+                        <div class="step-desc">进入「任务」页，输入自然语言任务，系统会自动识别优先级和截止时间。</div>
+                    </div>
+                    <button class="btn btn-green btn-sm" onclick="jumpToTab('todo')">去添加</button>
+                </div>
+                <div class="onboarding-step">
+                    <div class="step-num">2</div>
+                    <div>
+                        <div class="step-title">开启番茄钟节奏</div>
+                        <div class="step-desc">进入「番茄钟」，设定一个本次专注任务，点击开始并让系统提醒你休息。</div>
+                    </div>
+                    <button class="btn btn-amber btn-sm" onclick="jumpToTab('pomodoro')">去启动</button>
+                </div>
+                <div class="onboarding-step">
+                    <div class="step-num">3</div>
+                    <div>
+                        <div class="step-title">配置 AI 服务</div>
+                        <div class="step-desc">在「设置」里填入 API Key，启用你偏好的模型来获得智能建议与解析。</div>
+                    </div>
+                    <button class="btn btn-blue btn-sm" onclick="jumpToTab('settings')">去配置</button>
+                </div>
+            </div>
+            <div class="onboarding-foot">
+                <label><input type="checkbox" id="onboardingDontShow"> 不再自动显示</label>
+                <button class="btn btn-green" onclick="finishOnboarding()">完成，开始使用</button>
+            </div>
+        </div>
+    </div>
+
     <div class="app">
         <header>
             <div class="logo">
@@ -316,6 +360,16 @@
 
         <!-- ==================== TAB: TODO ==================== -->
         <div class="tab-content active" id="tab-todo">
+            <div class="quickstart-banner">
+                <div>
+                    <div class="quickstart-title">✨ 今天先做这三件事：写任务 → 开番茄钟 → 查看仪表盘</div>
+                    <div class="quickstart-sub">如果你是第一次使用，建议先运行引导，3 分钟即可完成基础配置。</div>
+                </div>
+                <div class="quickstart-actions">
+                    <button class="btn btn-sm" onclick="openOnboarding()">新手引导</button>
+                    <button class="btn btn-sm btn-blue" onclick="jumpToTab('dashboard')">查看仪表盘</button>
+                </div>
+            </div>
             <div class="g2e">
                 <div class="card">
                     <div class="todo-header">
