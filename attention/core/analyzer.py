@@ -5,13 +5,11 @@
 import base64
 import json
 import logging
-import time
 from dataclasses import dataclass, asdict
 from typing import Optional, Dict, Any
 
-from openai import OpenAI
-
 from attention.config import Config
+from attention.core.llm_provider import get_llm_provider
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +70,7 @@ class ScreenAnalyzer:
 
     def __init__(self):
         self.config = Config
-        self._client = OpenAI(
-            base_url=self.config.QWEN_API_BASE,
-            api_key=self.config.QWEN_API_KEY,
-        )
-    
+
     def analyze(self, image_data: bytes) -> tuple[AnalysisResult, str]:
         """
         分析屏幕截图
@@ -90,43 +84,25 @@ class ScreenAnalyzer:
         if not image_data:
             logger.error("图像数据为空")
             return AnalysisResult(details="图像数据为空"), ""
-        
-        # 重试机制
-        for attempt in range(self.config.MAX_RETRIES):
-            try:
-                raw_response = self._call_api(image_data)
-                result = self._parse_response(raw_response)
-                return result, raw_response
-            except Exception as e:
-                logger.warning(f"分析失败 (尝试 {attempt + 1}/{self.config.MAX_RETRIES}): {e}")
-                if attempt < self.config.MAX_RETRIES - 1:
-                    time.sleep(self.config.RETRY_DELAY)
-        
-        return AnalysisResult(details="分析失败，已达最大重试次数"), ""
-    
-    def _call_api(self, image_data: bytes) -> str:
-        """调用 Qwen-VL API（使用 openai 客户端）"""
-        image_base64 = base64.b64encode(image_data).decode("utf-8")
 
-        response = self._client.chat.completions.create(
-            model=self.config.MODEL_NAME,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
-                    },
-                    {
-                        "type": "text",
-                        "text": ANALYSIS_PROMPT,
-                    },
-                ],
-            }],
-            max_tokens=1000,
-            temperature=0.3,
-        )
-        return response.choices[0].message.content
+        image_base64 = base64.b64encode(image_data).decode("utf-8")
+        llm = get_llm_provider()
+
+        # 重试由 MultiLLMClient.vision() 内部处理（含跨提供商回退）
+        try:
+            raw_response = llm.vision(
+                prompt=ANALYSIS_PROMPT,
+                image_base64=image_base64,
+                image_type="image/jpeg",
+                max_tokens=1000,
+                timeout=self.config.REQUEST_TIMEOUT,
+                retries=self.config.MAX_RETRIES - 1,
+            )
+            result = self._parse_response(raw_response)
+            return result, raw_response
+        except Exception as e:
+            logger.error(f"屏幕分析失败（所有提供商均已尝试）: {e}")
+            return AnalysisResult(details=f"分析失败: {e}"), ""
     
     def _parse_response(self, response: str) -> AnalysisResult:
         """解析模型响应"""
