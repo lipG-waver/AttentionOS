@@ -563,16 +563,24 @@
         }
 
         /* Model Grid */
-        .api-model-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
-        .api-model-field { display:flex; flex-direction:column; }
-        .api-model-field label { font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.7px; margin-bottom:5px; }
-        .api-model-input {
-            padding:8px 11px; border-radius:var(--radius-sm);
-            background:rgba(255,255,255,0.04); border:1px solid var(--border);
-            color:var(--text-primary); font-size:12px; font-family:var(--mono);
-            transition:border-color .15s; width:100%;
+        .api-model-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
+        .api-model-field { display:flex; flex-direction:column; gap:6px; }
+        .api-model-field label {
+            font-size:12px; font-weight:600; color:var(--text-secondary);
+            display:flex; align-items:center; gap:5px;
         }
-        .api-model-input:focus { outline:none; border-color:var(--blue); }
+        .api-model-field label .lbl-icon { font-size:13px; opacity:0.75; }
+        .api-model-input {
+            padding:9px 12px; border-radius:var(--radius-sm);
+            background:rgba(255,255,255,0.04); border:1px solid var(--border);
+            color:var(--text-primary); font-size:13px; font-family:var(--sans);
+            transition:border-color .15s, box-shadow .15s; width:100%;
+        }
+        .api-model-input::placeholder { color:var(--text-muted); font-size:12px; }
+        .api-model-input:focus {
+            outline:none; border-color:var(--blue);
+            box-shadow:0 0 0 3px var(--blue-dim);
+        }
         [data-theme="light"] .api-model-input { background:rgba(0,0,0,0.03); }
 
         /* API Key */

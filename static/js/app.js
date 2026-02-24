@@ -1443,17 +1443,17 @@
                     <div class="api-provider-body">
                         <div class="api-model-grid">
                             <div class="api-model-field">
-                                <label>文本模型</label>
+                                <label><span class="lbl-icon">💬</span>文本模型</label>
                                 <input class="api-model-input" list="text-models-${p.provider}"
                                     id="textmodel-${p.provider}" value="${p.text_model || ''}"
-                                    placeholder="输入或选择">
+                                    placeholder="输入或选择模型名称">
                                 <datalist id="text-models-${p.provider}">${textOpts}</datalist>
                             </div>
                             <div class="api-model-field">
-                                <label>视觉模型</label>
+                                <label><span class="lbl-icon">🖼️</span>视觉模型</label>
                                 <input class="api-model-input" list="vision-models-${p.provider}"
                                     id="visionmodel-${p.provider}" value="${p.vision_model || ''}"
-                                    placeholder="可留空">
+                                    placeholder="无则留空">
                                 <datalist id="vision-models-${p.provider}">${visionOpts}</datalist>
                             </div>
                         </div>
