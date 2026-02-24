@@ -531,6 +531,9 @@ class DialogueAgent:
         if ctx.is_focus_mode:
             mins = ctx.focus_remaining_seconds // 60
             parts.append(f"状态：专注模式（任务：{ctx.focus_task}，剩余{mins}分钟）")
+        elif ctx.focus_task:
+            # 专注已暂停（focus_task 非空但 is_focus_mode=False）
+            parts.append(f"状态：专注已暂停（任务：{ctx.focus_task}）")
         elif ctx.is_distracted:
             parts.append(f"状态：注意力分散（已持续{ctx.distraction_duration_seconds // 60}分钟）")
             if ctx.current_app:

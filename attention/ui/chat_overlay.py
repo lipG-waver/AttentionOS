@@ -391,6 +391,17 @@ class ChatOverlay:
         if callback:
             try:
                 callback()
+                # 同步专注模式状态到 Agent 上下文
+                if action == "pause":
+                    self._agent.update_context(is_focus_mode=False)
+                elif action == "resume":
+                    self._agent.update_context(is_focus_mode=True)
+                elif action == "stop":
+                    self._agent.update_context(
+                        is_focus_mode=False,
+                        focus_task="",
+                        focus_remaining_seconds=0,
+                    )
             except Exception as e:
                 logger.error(f"执行操作 {action} 失败: {e}")
 
