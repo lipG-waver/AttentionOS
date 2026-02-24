@@ -1117,7 +1117,7 @@ async def set_provider_key(provider: str, request: Request):
         body = await request.json()
     except Exception:
         body = {}
-    api_key = body.get("api_key", "").strip()
+    api_key = (body.get("api_key") or "").strip()
     if not api_key:
         return {"success": False, "error": "API key 不能为空"}
     mgr = get_api_settings()
@@ -1139,7 +1139,7 @@ async def test_provider_key(provider: str, request: Request):
         body = await request.json()
     except Exception:
         body = {}
-    api_key = body.get("api_key", "").strip() or None
+    api_key = (body.get("api_key") or "").strip() or None
     mgr = get_api_settings()
     result = mgr.test_api_key(provider, api_key)
     return result
@@ -1154,7 +1154,7 @@ async def set_active_provider(request: Request):
         body = await request.json()
     except Exception:
         body = {}
-    provider = body.get("provider", "").strip()
+    provider = (body.get("provider") or "").strip()
     if not provider:
         return {"success": False, "error": "请指定提供商"}
     mgr = get_api_settings()
@@ -1174,7 +1174,7 @@ async def save_memo(request: Request):
         body = await request.json()
     except Exception:
         body = {}
-    content = body.get("content", "").strip()
+    content = (body.get("content") or "").strip()
     if not content:
         return {"success": False, "error": "内容不能为空"}
 

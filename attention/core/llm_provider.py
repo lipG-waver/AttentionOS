@@ -507,7 +507,15 @@ class MultiLLMClient:
                 json=payload,
                 timeout=timeout,
             )
-        response.raise_for_status()
+        if not response.ok:
+            try:
+                err_body = response.json()
+                err_msg = err_body.get("error", {}).get("message", "") or str(err_body)
+            except Exception:
+                err_msg = response.text[:500]
+            raise RuntimeError(
+                f"HTTP {response.status_code}: {err_msg}"
+            )
         result = response.json()
         content = (
             result.get("choices", [{}])[0]
@@ -560,7 +568,15 @@ class MultiLLMClient:
                 json=payload,
                 timeout=timeout,
             )
-        response.raise_for_status()
+        if not response.ok:
+            try:
+                err_body = response.json()
+                err_msg = err_body.get("error", {}).get("message", "") or str(err_body)
+            except Exception:
+                err_msg = response.text[:500]
+            raise RuntimeError(
+                f"HTTP {response.status_code}: {err_msg}"
+            )
         result = response.json()
 
         # Claude 返回格式不同
