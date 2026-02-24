@@ -1409,41 +1409,82 @@
         function renderAPIProviders(providers) {
             const box = document.getElementById('apiProvidersList');
             if (!box) return;
+
+            // Short abbreviation icons for each provider
+            const providerIcons = {
+                modelscope: 'MS', dashscope: 'DS', deepseek: 'DK',
+                openai: 'OAI', anthropic: 'CL', default: '??'
+            };
+
+            box.className = 'api-providers-grid';
             box.innerHTML = providers.map(p => {
                 const isActive = p.is_active;
-                const hasKey = p.api_key_set;
+                const hasKey  = p.api_key_set;
+                const icon    = providerIcons[p.provider] || p.provider.substring(0, 2).toUpperCase();
                 const suggested = p.model_suggestions || {text: [], vision: []};
-                const textOpts = (suggested.text || []).map(m => `<option value="${m}" ${m === p.text_model ? 'selected' : ''}>${m}</option>`).join('');
-                const visionOpts = (suggested.vision || []).map(m => `<option value="${m}" ${m === p.vision_model ? 'selected' : ''}>${m}</option>`).join('');
+                const textOpts   = (suggested.text   || []).map(m => `<option value="${m}">`).join('');
+                const visionOpts = (suggested.vision || []).map(m => `<option value="${m}">`).join('');
+                const subText = p.text_model
+                    ? p.text_model
+                    : (hasKey ? '已配置 · 未选择模型' : '点击展开配置');
+                const badgeCls = isActive ? 'badge-green' : hasKey ? 'badge-blue' : 'badge-amber';
+                const badgeTxt = isActive ? '✓ 使用中' : hasKey ? '已配置' : '未配置';
 
-                return `<div class="api-provider-card ${isActive ? 'active' : ''}" id="provider-${p.provider}">
-                    <div class="api-provider-header">
-                        <span class="api-provider-name">${p.display_name || p.provider}</span>
-                        <span class="api-provider-badge badge ${isActive ? 'badge-green' : hasKey ? 'badge-blue' : 'badge-amber'}">${isActive ? '当前使用' : hasKey ? '已配置' : '未配置'}</span>
-                    </div>
-                    <div class="api-model-grid">
-                        <div class="api-model-field">
-                            <label>文本模型</label>
-                            <input class="api-model-input" list="text-models-${p.provider}" id="textmodel-${p.provider}" value="${p.text_model || ''}" placeholder="输入或选择文本模型">
-                            <datalist id="text-models-${p.provider}">${textOpts}</datalist>
+                return `<div class="api-provider-card ${isActive ? 'active expanded' : ''}" id="provider-${p.provider}">
+                    <div class="api-provider-header" onclick="toggleProviderCard('${p.provider}')">
+                        <div class="api-provider-icon">${icon}</div>
+                        <div class="api-provider-info">
+                            <div class="api-provider-name">${p.display_name || p.provider}</div>
+                            <div class="api-provider-sub">${subText}</div>
                         </div>
-                        <div class="api-model-field">
-                            <label>视觉模型</label>
-                            <input class="api-model-input" list="vision-models-${p.provider}" id="visionmodel-${p.provider}" value="${p.vision_model || ''}" placeholder="可为空（该提供商无视觉模型）">
-                            <datalist id="vision-models-${p.provider}">${visionOpts}</datalist>
+                        <span class="api-provider-badge badge ${badgeCls}">${badgeTxt}</span>
+                        <span class="api-provider-chevron">▼</span>
+                    </div>
+                    <div class="api-provider-body">
+                        <div class="api-model-grid">
+                            <div class="api-model-field">
+                                <label>文本模型</label>
+                                <input class="api-model-input" list="text-models-${p.provider}"
+                                    id="textmodel-${p.provider}" value="${p.text_model || ''}"
+                                    placeholder="输入或选择">
+                                <datalist id="text-models-${p.provider}">${textOpts}</datalist>
+                            </div>
+                            <div class="api-model-field">
+                                <label>视觉模型</label>
+                                <input class="api-model-input" list="vision-models-${p.provider}"
+                                    id="visionmodel-${p.provider}" value="${p.vision_model || ''}"
+                                    placeholder="可留空">
+                                <datalist id="vision-models-${p.provider}">${visionOpts}</datalist>
+                            </div>
                         </div>
+                        <div class="api-key-section">
+                            <div class="api-field-label">🔑 API Key</div>
+                            <div class="api-key-wrapper">
+                                <input type="password" class="api-key-input" id="apikey-${p.provider}"
+                                    placeholder="${hasKey ? '••••••••  （已设置，输入新值覆盖）' : '输入 API Key...'}"
+                                    autocomplete="off">
+                                <button class="api-key-toggle" onclick="toggleKeyVisibility('${p.provider}')" title="显示/隐藏 Key">👁</button>
+                            </div>
+                        </div>
+                        <div class="api-actions">
+                            <button class="api-btn" onclick="saveProviderConfig('${p.provider}')">💾 保存模型</button>
+                            <button class="api-btn primary" id="testBtn-${p.provider}" onclick="testAPIKey('${p.provider}')">⚡ 测试连通</button>
+                            ${!isActive && hasKey ? `<button class="api-btn success" onclick="activateProvider('${p.provider}')">✓ 激活使用</button>` : ''}
+                        </div>
+                        <div class="api-test-result" id="testResult-${p.provider}"></div>
                     </div>
-                    <div class="api-key-row">
-                        <input type="password" class="api-key-input" id="apikey-${p.provider}"
-                            placeholder="${hasKey ? '••••••••（已配置，输入新值覆盖）' : '输入 API Key...'}"
-                            autocomplete="off">
-                        <button class="api-save-btn" onclick="saveProviderConfig('${p.provider}')">保存模型</button>
-                        <button class="api-test-btn" onclick="testAPIKey('${p.provider}')">测试</button>
-                        ${!isActive && hasKey ? `<button class="api-activate-btn" onclick="activateProvider('${p.provider}')">激活</button>` : ''}
-                    </div>
-                    <div class="api-test-result" id="testResult-${p.provider}"></div>
                 </div>`;
             }).join('');
+        }
+
+        function toggleProviderCard(provider) {
+            const card = document.getElementById('provider-' + provider);
+            if (card) card.classList.toggle('expanded');
+        }
+
+        function toggleKeyVisibility(provider) {
+            const input = document.getElementById('apikey-' + provider);
+            if (input) input.type = input.type === 'password' ? 'text' : 'password';
         }
 
         async function saveProviderConfig(provider) {
@@ -1485,10 +1526,10 @@
             const input = document.getElementById('apikey-' + provider);
             const apiKey = input.value.trim();
             const resultEl = document.getElementById('testResult-' + provider);
-            const btn = input.parentElement.querySelector('.api-test-btn');
+            const btn = document.getElementById('testBtn-' + provider);
 
             btn.classList.add('testing');
-            btn.textContent = '测试中...';
+            btn.innerHTML = '<span class="api-spinner"></span> 测试中...';
             resultEl.className = 'api-test-result';
             resultEl.style.display = 'none';
 
@@ -1536,7 +1577,7 @@
             }
 
             btn.classList.remove('testing');
-            btn.textContent = '测试';
+            btn.innerHTML = '⚡ 测试连通';
             // Refresh provider list
             setTimeout(loadAPIProviders, 500);
         }
