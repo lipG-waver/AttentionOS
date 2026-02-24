@@ -1,22 +1,19 @@
 """
 配置管理模块
 个人注意力管理Agent配置
+
+AI 提供商配置（API Key、激活提供商等）全部通过 Web 前端配置，
+持久化于 data/api_settings.json，无需 .env 文件。
 """
-import os
 from datetime import time
 from pathlib import Path
-from dotenv import load_dotenv
-
-# 加载 .env 文件
-load_dotenv()
 
 
 class Config:
-    # API配置 — 统一使用 ModelScope 生态模型
-    QWEN_API_BASE = "https://api-inference.modelscope.cn/v1"  # 魔塔社区 API Inference
-    QWEN_API_KEY = os.getenv("MODELSCOPE_ACCESS_TOKEN", "")   # 统一使用 MODELSCOPE_ACCESS_TOKEN
+    # API 默认端点常量（仅作备用，实际调用由 llm_provider 控制）
+    QWEN_API_BASE = "https://api-inference.modelscope.cn/v1"
     MODEL_NAME = "Qwen/Qwen3-VL-235B-A22B-Instruct"             # 视觉模型（截屏分析）
-    TEXT_MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"             # 文本模型（任务解析、提醒生成、回顾等）
+    TEXT_MODEL_NAME = "Qwen/Qwen3-Next-80B-A3B-Instruct"        # 文本模型（任务解析、提醒生成、回顾等）
     SENSEVOICE_MODEL = "iic/SenseVoiceSmall"                   # 语音模型（语音识别 + 情感检测）
     
     # 监控配置
@@ -114,8 +111,6 @@ class Config:
     @classmethod
     def validate(cls) -> bool:
         """验证配置是否有效"""
-        if not cls.QWEN_API_KEY:
-            raise ValueError("MODELSCOPE_ACCESS_TOKEN 未设置，请在 .env 文件中配置")
         return True
     
     @classmethod

@@ -8,6 +8,11 @@ import traceback
 
 
 def main():
+    # 启动时立即加载持久化的 API 配置（data/api_settings.json → MultiLLMClient）
+    # 必须在所有模式分支之前执行，确保第一个分析周期就能读到 key
+    from attention.core.api_settings import get_api_settings
+    get_api_settings()
+
     parser = argparse.ArgumentParser(
         description="注意力管理Agent v2.0",
         formatter_class=argparse.RawDescriptionHelpFormatter,

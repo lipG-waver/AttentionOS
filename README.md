@@ -20,15 +20,13 @@ Attention OS 是一款桌面端注意力管理工具。它通过截屏分析 + �
 # 1. 安装依赖
 pip install -r requirements.txt
 
-# 2. 配置 API 密钥（截屏分析需要 VL 模型）
-cp .env.example .env
-# 编辑 .env，填入 QWEN_API_KEY
-
-# 3. 启动
+# 2. 启动
 python run.py
 ```
 
 启动后自动打开浏览器访问 `http://127.0.0.1:5000`。
+
+首次使用请进入 **设置 → AI 模型配置**，选择 AI 提供商并填入对应的 API Key，保存后即可开始分析。配置持久化于本地 `data/api_settings.json`，无需 `.env` 文件。
 
 首次启动时会弹出**每日 Briefing**，引导你设定今日目标。
 

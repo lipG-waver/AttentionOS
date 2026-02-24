@@ -64,7 +64,7 @@ DEFAULT_CONFIGS: Dict[str, ProviderConfig] = {
     LLMProvider.MODELSCOPE: ProviderConfig(
         provider=LLMProvider.MODELSCOPE,
         api_base="https://api-inference.modelscope.cn/v1",
-        text_model="Qwen/Qwen2.5-72B-Instruct",
+        text_model="Qwen/Qwen3-Next-80B-A3B-Instruct",
         vision_model="Qwen/Qwen3-VL-235B-A22B-Instruct",
         display_name="ModelScope 魔搭",
     ),
@@ -103,9 +103,10 @@ DEFAULT_CONFIGS: Dict[str, ProviderConfig] = {
 SUGGESTED_MODELS: Dict[str, Dict[str, List[str]]] = {
     LLMProvider.MODELSCOPE: {
         "text": [
+            "Qwen/Qwen3-Next-80B-A3B-Instruct",
+            "Qwen/Qwen3-Next-235B-A22B-Instruct",
             "Qwen/Qwen2.5-72B-Instruct",
             "Qwen/Qwen2.5-32B-Instruct",
-            "Qwen/Qwen2.5-14B-Instruct",
         ],
         "vision": [
             "Qwen/Qwen3-VL-235B-A22B-Instruct",
