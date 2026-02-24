@@ -1281,6 +1281,13 @@
             } else if (mode === 'focus') {
                 input.placeholder = '快速记录，不打断专注...';
                 sendBtn.textContent = '📌';
+                // 点击专注标签时，若番茄钟空闲则自动启动
+                fetch('/api/pomodoro/status').then(r => r.json()).then(s => {
+                    if (s.phase === 'idle') {
+                        fetch('/api/pomodoro/start', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+                            .then(() => loadPomoStatus());
+                    }
+                }).catch(() => {});
             }
         }
 
