@@ -120,6 +120,14 @@ class PomodoroTimer:
         try:
             from attention.ui.chat_overlay import get_chat_overlay
             self._floating_overlay = get_chat_overlay()
+
+            # 连接悬浮窗操作回调 → 番茄钟动作
+            self._floating_overlay.on_focus_start = self._overlay_action_start
+            self._floating_overlay.on_focus_pause = self._overlay_action_pause
+            self._floating_overlay.on_focus_resume = self._overlay_action_resume
+            self._floating_overlay.on_focus_stop = self._overlay_action_stop
+            self._floating_overlay.on_skip_break = self._overlay_action_skip_break
+
             logger.info("番茄钟已集成到对话悬浮窗")
             # 立即发送初始状态
             self._update_floating_overlay()

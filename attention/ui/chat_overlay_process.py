@@ -264,6 +264,11 @@ def run_tkinter():
                 btn.config(fg=GREEN, bg=BG_PANEL)
             else:
                 btn.config(fg=TEXT_DIM, bg=BG_DARK)
+
+        # 点击专注标签时，若番茄钟空闲则自动启动
+        if m == "focus" and state["phase"] == "idle":
+            emit({"type": "action", "action": "start_focus"})
+
         # 更新输入框占位文字颜色提示
         placeholders = {
             "memo":  "记下灵感，保存为笔记...",
