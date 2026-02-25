@@ -73,7 +73,7 @@
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
             document.getElementById('tab-' + name).classList.add('active');
             if (el) el.classList.add('active');
-            if (name === 'dashboard') { ensureChartsInit(); loadData(); loadWorkStartData(); }
+            if (name === 'dashboard') { ensureChartsInit(); loadData(); loadWorkStartData(); loadVocabProgress(); }
             if (name === 'todo') loadTodos();
             if (name === 'chatlog') { loadChatLogDates(); }
             if (name === 'plugins') { loadPlugins(); }
@@ -216,6 +216,52 @@
                 const weekday_cn = ['周一','周二','周三','周四','周五','周六','周日'][new Date(d.date).getDay() === 0 ? 6 : new Date(d.date).getDay() - 1];
                 return `<div title="${d.date} ${weekday_cn}\n开工: ${d.start_time.substring(0,5)}" style="width:14px;height:${pct * 0.7}px;min-height:6px;border-radius:2px 2px 0 0;background:${color};cursor:pointer;flex-shrink:0;opacity:${d.date===new Date().toISOString().substring(0,10)?'1':'0.7'};"></div>`;
             }).join('');
+        }
+
+        // ==================== VOCAB PROGRESS ====================
+        async function loadVocabProgress() {
+            try {
+                const res = await fetch('/api/vocab/progress');
+                if (!res.ok) return;
+                const d = await res.json();
+                renderVocabProgress(d);
+            } catch(e) { console.error('Load vocab failed:', e); }
+        }
+
+        function renderVocabProgress(d) {
+            const el = document.getElementById('vocabContent');
+            if (!el) return;
+            if (!d.has_data) {
+                el.innerHTML = `
+                    <div style="padding:16px 0;color:var(--text-muted);font-size:13px;">
+                        <div style="font-size:15px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;">暂无词表数据</div>
+                        <div>请运行导入脚本初始化词表：</div>
+                        <code style="display:inline-block;margin-top:6px;padding:4px 10px;background:var(--bg-card-hover);border-radius:6px;font-size:12px;color:var(--blue);">python scripts/import_vocab.py</code>
+                    </div>`;
+                return;
+            }
+            const pct = d.current_pct;
+            const barColor = pct === 100 ? 'var(--green)' : pct >= 60 ? 'var(--blue)' : pct >= 30 ? 'var(--amber)' : 'var(--red)';
+            const listBadges = (d.lists || []).map(l => {
+                const lc = l.pct === 100 ? 'var(--green)' : l.pct >= 60 ? 'var(--blue)' : l.pct >= 1 ? 'var(--amber)' : 'var(--text-muted)';
+                const isActive = l.name === d.current_list;
+                return `<div class="vocab-list-badge${isActive ? ' active' : ''}" title="${l.name}: ${l.mastered}/${l.total} 词 (${l.pct}%)">
+                    <div class="vocab-badge-name">${l.name}</div>
+                    <div class="vocab-badge-track"><div class="vocab-badge-fill" style="width:${l.pct}%;background:${lc};"></div></div>
+                    <div class="vocab-badge-pct" style="color:${lc};">${l.pct}%</div>
+                </div>`;
+            }).join('');
+
+            el.innerHTML = `
+                <div class="vocab-headline">你掌握了 <span class="vocab-list-name">${d.current_list}</span> 的 <span class="vocab-pct-big" style="color:${barColor};">${pct}%</span></div>
+                <div class="vocab-progress-row">
+                    <div class="vocab-bar-track">
+                        <div class="vocab-bar-fill" style="width:${pct}%;background:${barColor};"></div>
+                    </div>
+                    <span class="vocab-bar-label">${d.current_mastered} / ${d.current_total} 词</span>
+                </div>
+                <div class="vocab-overall">整体进度：<b style="color:var(--text-primary);">${d.total_mastered}</b> / ${d.total_words} 词已掌握 &nbsp;<span style="color:var(--green);font-weight:600;">${d.overall_pct}%</span></div>
+                <div class="vocab-lists-grid">${listBadges}</div>`;
         }
 
         // ==================== DATA LOADING ====================

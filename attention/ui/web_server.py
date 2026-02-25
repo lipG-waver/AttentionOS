@@ -1312,6 +1312,93 @@ async def list_memos():
     return {"memos": memos[:50]}  # 最多返回 50 条
 
 
+# ==================== 词表进度 API ====================
+
+_VOCAB_FILE = Config.BASE_DIR / "data" / "vocab_progress.json"
+
+
+def _load_vocab_data() -> dict:
+    if not _VOCAB_FILE.exists():
+        return {}
+    try:
+        with open(_VOCAB_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_vocab_data(data: dict):
+    _VOCAB_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(_VOCAB_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+@app.get("/api/vocab/progress")
+@_safe_route
+async def get_vocab_progress():
+    """返回词表掌握进度"""
+    data = _load_vocab_data()
+    if not data or not data.get("lists"):
+        return {"has_data": False}
+
+    lists_raw = data["lists"]
+    current_list = data.get("current_list") or next(iter(lists_raw))
+
+    lists_out = []
+    for name, v in lists_raw.items():
+        total = max(v.get("total", 0), 1)
+        mastered = v.get("mastered", 0)
+        lists_out.append({
+            "name": name,
+            "total": total,
+            "mastered": mastered,
+            "pct": round(mastered / total * 100),
+        })
+
+    total_words = sum(v.get("total", 0) for v in lists_raw.values())
+    total_mastered = sum(v.get("mastered", 0) for v in lists_raw.values())
+    cur = lists_raw.get(current_list, {})
+    cur_total = max(cur.get("total", 1), 1)
+    cur_mastered = cur.get("mastered", 0)
+
+    return {
+        "has_data": True,
+        "current_list": current_list,
+        "current_mastered": cur_mastered,
+        "current_total": cur_total,
+        "current_pct": round(cur_mastered / cur_total * 100),
+        "total_mastered": total_mastered,
+        "total_words": total_words,
+        "overall_pct": round(total_mastered / max(total_words, 1) * 100),
+        "last_updated": data.get("last_updated", ""),
+        "lists": lists_out,
+    }
+
+
+@app.post("/api/vocab/mark")
+@_safe_route
+async def mark_vocab(request: Request):
+    """更新某词表的掌握数量
+    Body: {"list_name": "List 12", "mastered": 17}
+    """
+    body = await request.json()
+    list_name = body.get("list_name")
+    mastered = body.get("mastered")
+    if not list_name or mastered is None:
+        return JSONResponse(status_code=400, content={"success": False, "error": "缺少 list_name 或 mastered"})
+
+    data = _load_vocab_data()
+    if not data or list_name not in data.get("lists", {}):
+        return JSONResponse(status_code=404, content={"success": False, "error": f"词表 {list_name} 不存在"})
+
+    total = data["lists"][list_name]["total"]
+    data["lists"][list_name]["mastered"] = max(0, min(int(mastered), total))
+    data["current_list"] = list_name
+    data["last_updated"] = datetime.now().isoformat()
+    _save_vocab_data(data)
+    return {"success": True}
+
+
 # ==================== 插件管理 API ====================
 
 @app.get("/api/plugins")

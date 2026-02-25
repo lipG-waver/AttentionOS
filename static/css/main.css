@@ -775,6 +775,91 @@
         .onboarding-foot input { margin-right:6px; }
 
         /* ─── RESPONSIVE ─── */
+        /* ─── VOCAB PROGRESS ─── */
+        .vocab-headline {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 10px;
+            letter-spacing: -0.2px;
+        }
+        .vocab-list-name {
+            color: var(--blue);
+        }
+        .vocab-pct-big {
+            font-size: 22px;
+            font-family: var(--mono);
+        }
+        .vocab-progress-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+        .vocab-bar-track {
+            flex: 1;
+            height: 8px;
+            border-radius: 4px;
+            background: var(--border);
+            overflow: hidden;
+        }
+        .vocab-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.6s ease;
+        }
+        .vocab-bar-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            font-family: var(--mono);
+        }
+        .vocab-overall {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 14px;
+        }
+        .vocab-lists-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .vocab-list-badge {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            padding: 6px 8px;
+            border-radius: var(--radius-sm);
+            background: var(--bg-card-hover);
+            border: 1px solid var(--border);
+            min-width: 70px;
+            cursor: default;
+            transition: border-color 0.15s;
+        }
+        .vocab-list-badge.active {
+            border-color: var(--blue);
+        }
+        .vocab-badge-name {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .vocab-badge-track {
+            height: 3px;
+            border-radius: 2px;
+            background: var(--border);
+            overflow: hidden;
+        }
+        .vocab-badge-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.5s ease;
+        }
+        .vocab-badge-pct {
+            font-size: 10px;
+            font-family: var(--mono);
+        }
+
         @media(max-width:1200px) { .g4{grid-template-columns:repeat(2,1fr);} .g3{grid-template-columns:1fr 1fr;} }
         @media(max-width:768px) {
             .g4,.g2,.g3,.g2e{grid-template-columns:1fr;}
