@@ -307,13 +307,30 @@ attention-os/
 
 ## 版本历史
 
-### v3.3（当前）
+### v5.2（当前）
+- 🎯 **一切皆对话** - 核心设计哲学演进，产品围绕对话框展开
+- 🧪 **测试驱动开发** - 建立完整的单元测试、集成测试、系统测试体系
+- 🤖 **增强的 Multi-Agent 架构** - Coach / Reviewer / Parser / Summarizer / 新增 Agent 支持
+- 💬 **对话驱动的用户交互** - 自然语言配置、多轮对话记忆、对话历史追踪
+- 📈 **性能与稳定性提升** - 长期运行稳定性、响应时间优化
+
+### v5.1
+- 集成 Claude API 支持选项
+- 完善的 API 参考文档
+- 性能基准测试体系建立
+
+### v5.0
+- 完整的对话式 UI 框架
+- 对话历史持久化与搜索
+- 用户自定义对话流程
+
+### v3.3
 - ☀️ 每日 Briefing（开工时设定今日目标）
 - 🎯 任务感知主动提醒（Coach Agent LLM 动态生成）
 - 🍅 专注时段（番茄钟 + 任务绑定 + 专注日志持久化）
 - 🌙 一日回顾闭环（Reviewer Agent + 五维雷达图）
 - 🤖 Multi-Agent 架构（Coach / Reviewer / Parser / Summarizer）
-- 🎙 SenseVoice 语音输入（替代 Web Speech API）
+- 🎙 SenseVoice 语音输入（替加 Web Speech API）
 - 📊 周数据洞察（跨天行为模式分析）
 - 🔧 统一 LLM 调用层（`llm_client.py`）
 - 📦 全面切换至 Qwen 系列模型（3 个 ModelScope 模型）
