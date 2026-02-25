@@ -619,9 +619,10 @@ def run_tkinter():
                        "msg_type": msg_type, "timestamp": ts}
                 add_message(msg)
 
-                # nudge 类型 → 自动展开
+                # nudge 类型 → 不自动展开，仅更新小球状态（避免弹窗打断用户）
+                # 小球已通过未读徽标（红点）和 worried 表情提示用户
                 if msg_type == "nudge" and not state["expanded"]:
-                    expand()
+                    state["mood"] = "worried"
 
             elif act == "update_timer":
                 old_phase = state["phase"]
