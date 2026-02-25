@@ -210,6 +210,14 @@ CATEGORY_KEYWORDS = {
 }
 
 
+FEELING_KEYWORDS = {
+    "great": ["极佳", "超好", "爽", "高效", "专注", "状态好", "很好", "太棒", "顺畅", "顺手"],
+    "good":  ["不错", "还好", "挺好", "良好", "可以", "ok", "okay", "fine"],
+    "tired": ["累", "疲惫", "困", "乏", "没劲", "有点累", "头疼", "头痛", "撑不住"],
+    "bad":   ["很差", "糟糕", "难受", "烦", "崩溃", "焦虑", "心情差", "状态差", "低落", "很累"],
+}
+
+
 def infer_category(text: str) -> str:
     """根据用户输入推断类别"""
     text_lower = text.lower()
@@ -217,6 +225,16 @@ def infer_category(text: str) -> str:
         if keyword in text_lower:
             return category
     return "other"
+
+
+def infer_feeling_from_text(text: str) -> str:
+    """从自然语言文本推断情绪状态"""
+    text_lower = text.lower()
+    for feeling, keywords in FEELING_KEYWORDS.items():
+        for kw in keywords:
+            if kw in text_lower:
+                return feeling
+    return "normal"
 
 
 def show_checkin_dialog_macos() -> Optional[Dict[str, str]]:
@@ -765,22 +783,67 @@ class HourlyCheckin:
         return False
 
     def _do_checkin(self):
-        """执行签到"""
+        """执行签到：优先通过悬浮对话框，不可用时降级到系统弹窗"""
         self._showing_dialog = True
         logger.info("触发每小时签到...")
 
-        # 播放提示音
         if self.settings.sound_enabled:
             play_checkin_sound()
 
-        # 采集当前应用
+        # 尝试通过 ChatOverlay 发起对话签到
+        try:
+            from attention.ui.chat_overlay import get_chat_overlay
+            overlay = get_chat_overlay()
+            if overlay.is_ready():
+                self._do_checkin_via_overlay(overlay)
+                return
+        except Exception as e:
+            logger.debug(f"ChatOverlay 不可用，降级到弹窗: {e}")
+
+        # 降级：系统原生弹窗
+        self._do_checkin_via_dialog()
+
+    def _do_checkin_via_overlay(self, overlay):
+        """通过悬浮对话框完成签到"""
         auto_app, auto_title = self._get_current_app()
 
+        def on_user_reply(text: str):
+            try:
+                entry = CheckinEntry(
+                    hour=datetime.now().hour,
+                    doing=text,
+                    feeling=infer_feeling_from_text(text),
+                    category=infer_category(text),
+                    auto_app=auto_app,
+                    auto_title=auto_title,
+                )
+                entries = _load_today_entries()
+                entries.append(entry)
+                _save_today_entries(entries)
+                self.stats["checkins_today"] += 1
+                logger.info(f"对话签到完成: {entry.doing} [{entry.category}] ({entry.feeling})")
+
+                if self._on_checkin:
+                    self._on_checkin(entry.to_dict())
+
+                # 确认回复
+                overlay._send_ai_message("✅ 记下了！继续加油～", msg_type="status")
+            except Exception as e:
+                logger.error(f"保存对话签到失败: {e}")
+            finally:
+                self._showing_dialog = False
+                self._schedule_next()
+
+        overlay.show_checkin_prompt(on_user_reply)
+        # 注意：此处不重置 _showing_dialog，由 on_user_reply 回调负责重置
+
+    def _do_checkin_via_dialog(self):
+        """降级方案：系统原生弹窗签到"""
+        auto_app, auto_title = self._get_current_app()
         try:
             result = show_checkin_dialog()
 
             if result is None:
-                # 弹窗失败
                 logger.warning("签到弹窗未能显示")
                 self._schedule_next()
                 return
@@ -800,14 +863,12 @@ class HourlyCheckin:
                 entry.feeling = result.get("feeling", "normal")
                 entry.category = infer_category(entry.doing)
                 self.stats["checkins_today"] += 1
-                logger.info(f"签到完成: {entry.doing} [{entry.category}] ({entry.feeling})")
+                logger.info(f"弹窗签到完成: {entry.doing} [{entry.category}] ({entry.feeling})")
 
-            # 保存
             entries = _load_today_entries()
             entries.append(entry)
             _save_today_entries(entries)
 
-            # 回调
             if self._on_checkin:
                 self._on_checkin(entry.to_dict())
 

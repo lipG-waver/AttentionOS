@@ -60,6 +60,10 @@ class ChatOverlay:
         # 日志保存定时器
         self._last_log_save = None
 
+        # 一次性签到回调：当有待处理的签到问题时，下一条用户消息路由到此回调
+        self._pending_checkin_callback: Optional[Callable[[str], None]] = None
+        self._pending_checkin_lock = threading.Lock()
+
         # macOS 快速崩溃检测
         self._quick_crash_count = 0
         self._force_headless = False
@@ -190,6 +194,23 @@ class ChatOverlay:
             "cmd": "update_rest_timer",
             "remaining_minutes": remaining_minutes,
         })
+
+    def show_checkin_prompt(self, callback: Callable[[str], None], prompt_text: str = ""):
+        """
+        在悬浮对话框内发起一次签到问答。
+
+        发送签到提问消息，并注册一次性回调：下一条用户输入将路由到 callback
+        而非 DialogueAgent。callback 接收原始文本，由调用方解析内容与情绪。
+
+        Args:
+            callback: 接收用户回复文本的一次性回调
+            prompt_text: 自定义提问文本，默认使用标准签到问句
+        """
+        text = prompt_text or "⏰ 整点签到～过去一小时你在做什么？感觉怎么样？"
+        with self._pending_checkin_lock:
+            self._pending_checkin_callback = callback
+        self._send_ai_message(text, msg_type="checkin")
+        logger.info("发送签到提问，等待用户回复...")
 
     def get_agent(self) -> DialogueAgent:
         """获取对话 Agent 实例"""
@@ -349,6 +370,20 @@ class ChatOverlay:
     def _process_user_message(self, text: str, mode: str = "ai"):
         """处理用户消息（异步，在后台线程）"""
         try:
+            # 优先检查是否有待处理的签到回调
+            checkin_callback = None
+            with self._pending_checkin_lock:
+                if self._pending_checkin_callback is not None:
+                    checkin_callback = self._pending_checkin_callback
+                    self._pending_checkin_callback = None
+
+            if checkin_callback is not None:
+                try:
+                    checkin_callback(text)
+                except Exception as e:
+                    logger.error(f"签到回调执行失败: {e}")
+                return  # 签到回复不再经过 DialogueAgent
+
             if mode == "memo":
                 response = self._handle_memo_save(text)
             elif mode == "focus":
