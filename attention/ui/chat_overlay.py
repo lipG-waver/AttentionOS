@@ -121,9 +121,9 @@ class ChatOverlay:
         self._send_ai_message(msg, msg_type="nudge")
         logger.info(f"发送分心提醒: {msg[:50]}...")
 
-    def show_break_reminder(self):
-        """休息提醒（通过对话方式）"""
-        msg = self._agent.proactive_break_chat()
+    def show_break_reminder(self, continuous_minutes: int = 0):
+        """休息提醒（通过对话方式），continuous_minutes 为实际连续工作分钟数"""
+        msg = self._agent.proactive_break_chat(continuous_minutes=continuous_minutes)
         self._send_ai_message(msg, msg_type="status")
 
     def on_focus_started(self, task: str, duration_min: int):
