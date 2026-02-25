@@ -1567,6 +1567,7 @@
         }
         function stopFocusRefresh() {
             if (focusRefreshTimer) { clearInterval(focusRefreshTimer); focusRefreshTimer = null; }
+        }
         // ==================== 开机自启 ====================
         async function loadAutoStartStatus() {
             try {
