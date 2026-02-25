@@ -238,6 +238,14 @@ class AppManager:
         except Exception as e:
             logger.warning(f"番茄钟初始化失败: {e}")
 
+        # 休息提醒（通过对话悬浮窗，不再弹出原生对话框）
+        try:
+            from attention.features.break_reminder import start_break_reminder
+            start_break_reminder()
+            logger.info("休息提醒已启动")
+        except Exception as e:
+            logger.warning(f"休息提醒启动失败: {e}")
+
         # 每小时签到
         try:
             from attention.features.hourly_checkin import start_hourly_checkin

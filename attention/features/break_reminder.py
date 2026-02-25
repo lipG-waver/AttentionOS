@@ -360,26 +360,25 @@ class BreakReminder:
             time.sleep(5)  # 每5秒检查一次
     
     def _show_reminder(self):
-        """显示提醒"""
+        """通过对话悬浮窗发送休息提醒（已从原生对话框迁移到悬浮窗）"""
         self._showing_dialog = True
         self.stats["reminders_shown"] += 1
-        
-        logger.info("显示休息提醒...")
-        
+
+        logger.info("发送休息提醒到对话悬浮窗...")
+
+        # 播放提示音
+        if self.settings.sound_enabled:
+            play_sound()
+
         try:
-            result = show_reminder_dialog(self.settings)
-            
-            if result == "break":
-                self._on_take_break()
-            elif result == "snooze":
-                self._on_snooze()
-            else:
-                self._on_skip()
+            from attention.ui.chat_overlay import get_chat_overlay
+            overlay = get_chat_overlay()
+            overlay.show_break_reminder()
         except Exception as e:
-            logger.error(f"显示提醒异常: {e}")
-            # 异常时也必须重置，否则会无限弹窗
-            self._reset_timer()
+            logger.warning(f"发送休息提醒失败: {e}")
         finally:
+            # 默认重置计时器；用户可通过对话悬浮窗交互选择休息方案
+            self._reset_timer()
             self._showing_dialog = False
     
     def _on_take_break(self):
