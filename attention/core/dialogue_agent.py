@@ -206,13 +206,13 @@ class DialogueAgent:
                          metadata={"reason": reason})
         return response
 
-    def proactive_break_chat(self) -> str:
-        """休息时间的主动对话开场"""
-        ctx = self.get_context()
+    def proactive_break_chat(self, continuous_minutes: int = 0) -> str:
+        """休息时间的主动对话开场，continuous_minutes 为实际连续工作分钟数"""
+        duration_str = f"{continuous_minutes} 分钟" if continuous_minutes > 0 else "一段时间"
         prompts = [
-            "休息时间到了 ☕ 站起来走动走动？",
-            "该休息了！你已经专注了很长时间，眼睛也需要放松一下 🌿",
-            "辛苦了！休息几分钟，回来效率更高 💪",
+            f"你已经连续工作了 {duration_str} 了，站起来走走？☕",
+            f"连续工作 {duration_str}，眼睛和脑袋都需要喘口气 🌿",
+            f"已经 {duration_str} 没休息了，起来动一动，回来效率更高 💪",
         ]
         import random
         msg = random.choice(prompts)

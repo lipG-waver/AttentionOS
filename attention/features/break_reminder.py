@@ -24,11 +24,12 @@ SYSTEM = platform.system()
 class BreakSettings:
     """休息提醒设置"""
     enabled: bool = True                    # 是否启用
-    interval_minutes: int = 45              # 提醒间隔（分钟）
+    interval_minutes: int = 45              # 连续在场多少分钟后提醒
     break_duration_minutes: int = 5         # 建议休息时长（分钟）
     sound_enabled: bool = True              # 是否播放提示音
-    skip_if_idle: bool = True               # 如果用户空闲则跳过提醒
-    idle_threshold_seconds: int = 300       # 空闲阈值（秒）
+    skip_if_idle: bool = True               # 保留字段，兼容旧配置（不再直接使用）
+    idle_threshold_seconds: int = 300       # 保留字段，兼容旧配置（不再直接使用）
+    real_break_threshold_seconds: int = 600 # 真实休息阈值：离开超过此秒数才重置工作会话
     
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -266,10 +267,12 @@ class BreakReminder:
         self.settings = settings or BreakSettings()
         self._running = False
         self._thread: Optional[threading.Thread] = None
-        self._next_reminder: Optional[datetime] = None
+        # _work_session_start: 当前连续工作会话的起始时间
+        # None = 用户尚未在场（或刚完成一次提醒/真实休息）
+        self._work_session_start: Optional[datetime] = None
         self._snooze_until: Optional[datetime] = None
         self._showing_dialog = False
-        
+
         # 统计
         self.stats = {
             "reminders_shown": 0,
@@ -309,16 +312,19 @@ class BreakReminder:
         """启动休息提醒"""
         if self._running:
             return
-        
+
         if not self.settings.enabled:
             logger.info("休息提醒未启用")
             return
-        
+
         self._running = True
-        self._next_reminder = datetime.now() + timedelta(minutes=self.settings.interval_minutes)
+        self._work_session_start = None
         self._thread = threading.Thread(target=self._reminder_loop, daemon=True)
         self._thread.start()
-        logger.info(f"休息提醒已启动，间隔: {self.settings.interval_minutes}分钟，下次提醒: {self._next_reminder.strftime('%H:%M:%S')}")
+        logger.info(
+            f"休息提醒已启动，连续在场超过 {self.settings.interval_minutes} 分钟后提醒，"
+            f"真实休息阈值: {self.settings.real_break_threshold_seconds} 秒"
+        )
     
     def stop(self):
         """停止休息提醒"""
@@ -326,45 +332,75 @@ class BreakReminder:
         logger.info("休息提醒已停止")
     
     def _reminder_loop(self):
-        """提醒循环"""
+        """
+        提醒循环（基于连续在场时长，而非墙钟时间）
+
+        核心逻辑：
+        - 只要用户在场（idle < real_break_threshold），工作会话计时就持续累积
+        - 短暂静止（读代码、思考，< real_break_threshold）不会重置计时
+        - 只有真正离开（idle >= real_break_threshold）才视为休息，重置工作会话
+        - 连续在场达到 interval_minutes 后，发送休息提醒
+        """
         while self._running:
+            time.sleep(30)  # 每30秒检查一次
+
+            if self._showing_dialog:
+                continue
+
             now = datetime.now()
-            
-            # 检查是否到达提醒时间
-            if self._next_reminder and now >= self._next_reminder:
-                # 检查是否正在显示对话框
-                if self._showing_dialog:
-                    time.sleep(5)
-                    continue
-                
-                # 检查是否在贪睡期间
-                if self._snooze_until and now < self._snooze_until:
-                    time.sleep(10)
-                    continue
-                
-                # 检查用户是否空闲
-                if self.settings.skip_if_idle:
-                    idle_seconds = self._get_idle_seconds()
-                    if idle_seconds > self.settings.idle_threshold_seconds:
-                        logger.debug(f"用户空闲 {idle_seconds}秒，跳过本次提醒")
-                        self._reset_timer()
-                        continue
-                
-                # 【关键】先清空触发条件，再显示提醒
-                # 防止 _show_reminder 执行期间循环再次判定 now >= _next_reminder
-                self._next_reminder = None
-                
-                # 显示提醒（内部各分支会调用 _reset_timer 设置新的 _next_reminder）
-                self._show_reminder()
-            
-            time.sleep(5)  # 每5秒检查一次
+            idle_seconds = self._get_idle_seconds()
+
+            # 贪睡到期 → 若用户在场则立即补发提醒
+            if self._snooze_until and now >= self._snooze_until:
+                self._snooze_until = None
+                if idle_seconds < self.settings.real_break_threshold_seconds:
+                    self._show_reminder()
+                else:
+                    # 用户离开了，贪睡期间自然休息，重置会话
+                    self._work_session_start = None
+                continue
+
+            # 贪睡中，等待
+            if self._snooze_until:
+                continue
+
+            # 用户真正离开（超过真实休息阈值）→ 视为已休息，重置工作会话
+            if idle_seconds >= self.settings.real_break_threshold_seconds:
+                if self._work_session_start is not None:
+                    away_minutes = idle_seconds / 60
+                    logger.debug(
+                        f"用户已离开 {away_minutes:.0f} 分钟，"
+                        f"视为真实休息，重置连续工作计时"
+                    )
+                    self._work_session_start = None
+                continue
+
+            # 用户在场（idle < real_break_threshold）
+            if self._work_session_start is None:
+                # 会话刚开始（或刚结束休息/提醒），补偿已有的在场时间
+                self._work_session_start = now - timedelta(seconds=idle_seconds)
+                logger.debug(
+                    f"开始追踪连续工作时长，估算起点: "
+                    f"{self._work_session_start.strftime('%H:%M:%S')}"
+                )
+
+            # 计算连续在场时长
+            session_minutes = (now - self._work_session_start).total_seconds() / 60
+            logger.debug(f"连续工作时长: {session_minutes:.0f} 分钟 / {self.settings.interval_minutes} 分钟")
+
+            if session_minutes >= self.settings.interval_minutes:
+                logger.info(f"连续工作 {session_minutes:.0f} 分钟，触发休息提醒")
+                # 先重置会话，防止重复触发
+                self._work_session_start = None
+                self._show_reminder(session_minutes=int(session_minutes))
     
-    def _show_reminder(self):
+    def _show_reminder(self, session_minutes: int = 0):
         """通过对话悬浮窗发送休息提醒（已从原生对话框迁移到悬浮窗）"""
         self._showing_dialog = True
         self.stats["reminders_shown"] += 1
 
-        logger.info("发送休息提醒到对话悬浮窗...")
+        actual_minutes = session_minutes or self.settings.interval_minutes
+        logger.info(f"发送休息提醒到对话悬浮窗（连续工作 {actual_minutes} 分钟）...")
 
         # 播放提示音
         if self.settings.sound_enabled:
@@ -373,12 +409,10 @@ class BreakReminder:
         try:
             from attention.ui.chat_overlay import get_chat_overlay
             overlay = get_chat_overlay()
-            overlay.show_break_reminder()
+            overlay.show_break_reminder(continuous_minutes=actual_minutes)
         except Exception as e:
             logger.warning(f"发送休息提醒失败: {e}")
         finally:
-            # 默认重置计时器；用户可通过对话悬浮窗交互选择休息方案
-            self._reset_timer()
             self._showing_dialog = False
     
     def _on_take_break(self):
@@ -419,16 +453,16 @@ class BreakReminder:
     def _on_snooze(self):
         """用户选择稍后提醒"""
         self.stats["snoozed"] += 1
-        logger.info("用户选择10分钟后提醒")
-        self._snooze_until = datetime.now() + timedelta(minutes=10)
-        self._next_reminder = self._snooze_until
-    
+        snooze_minutes = 10
+        self._snooze_until = datetime.now() + timedelta(minutes=snooze_minutes)
+        self._work_session_start = None
+        logger.info(f"已贪睡，{snooze_minutes} 分钟后再次提醒")
+
     def _reset_timer(self, delay_minutes: int = 0):
-        """重置计时器"""
-        base_time = datetime.now() + timedelta(minutes=delay_minutes)
-        self._next_reminder = base_time + timedelta(minutes=self.settings.interval_minutes)
+        """重置工作会话计时（兼容旧调用）"""
+        self._work_session_start = None
         self._snooze_until = None
-        logger.info(f"下次提醒时间: {self._next_reminder.strftime('%H:%M:%S')}")
+        logger.debug("工作会话计时已重置")
     
     def _get_idle_seconds(self) -> int:
         """获取用户空闲时间"""
@@ -470,19 +504,34 @@ class BreakReminder:
     
     def get_status(self) -> Dict[str, Any]:
         """获取当前状态"""
+        now = datetime.now()
+        next_reminder_str = None
         minutes_until = None
-        if self._next_reminder:
-            delta = (self._next_reminder - datetime.now()).total_seconds()
+        session_elapsed_minutes = None
+
+        if self._snooze_until:
+            # 贪睡中：下次提醒 = 贪睡到期时间
+            delta = (self._snooze_until - now).total_seconds()
             minutes_until = max(0, int(delta / 60))
-        
+            next_reminder_str = self._snooze_until.strftime("%H:%M:%S")
+        elif self._work_session_start:
+            # 工作会话进行中：根据已累计时长推算剩余时间
+            elapsed = (now - self._work_session_start).total_seconds() / 60
+            session_elapsed_minutes = int(elapsed)
+            remaining = max(0, self.settings.interval_minutes - elapsed)
+            minutes_until = int(remaining)
+            next_remind_at = self._work_session_start + timedelta(minutes=self.settings.interval_minutes)
+            next_reminder_str = next_remind_at.strftime("%H:%M:%S")
+
         return {
             "enabled": self.settings.enabled,
             "running": self._running,
             "interval_minutes": self.settings.interval_minutes,
             "break_duration_minutes": self.settings.break_duration_minutes,
             "sound_enabled": self.settings.sound_enabled,
-            "next_reminder": self._next_reminder.strftime("%H:%M:%S") if self._next_reminder else None,
+            "next_reminder": next_reminder_str,
             "minutes_until_next": minutes_until,
+            "session_elapsed_minutes": session_elapsed_minutes,
             "stats": self.stats
         }
     
