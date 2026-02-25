@@ -1250,6 +1250,7 @@
         // ==================== FLOATING CHAT WIDGET ====================
         var chatMode = 'ask_ai'; // 'memo' | 'ask_ai' | 'focus'
         var chatOpen = false;
+        var focusRefreshTimer = null;
 
         function toggleChat() {
             chatOpen = !chatOpen;
@@ -1258,11 +1259,18 @@
             if (chatOpen) {
                 panel.classList.add('show');
                 fab.classList.add('open');
-                document.getElementById('chatInput').focus();
-                loadChatHistory();
+                if (chatMode === 'ask_ai') {
+                    document.getElementById('chatInput').focus();
+                    loadChatHistory();
+                } else if (chatMode === 'memo') {
+                    document.getElementById('memoInput').focus();
+                } else if (chatMode === 'focus') {
+                    loadFocusPanelData();
+                }
             } else {
                 panel.classList.remove('show');
                 fab.classList.remove('open');
+                stopFocusRefresh();
             }
         }
 
@@ -1270,96 +1278,194 @@
             chatMode = mode;
             document.querySelectorAll('.chat-mode-tab').forEach(t => t.classList.remove('active'));
             document.querySelector(`.chat-mode-tab[data-mode="${mode}"]`).classList.add('active');
-            const input = document.getElementById('chatInput');
-            const sendBtn = document.getElementById('chatSendBtn');
+            // Switch panels
+            document.querySelectorAll('.chat-content-panel').forEach(p => p.classList.remove('active'));
             if (mode === 'memo') {
-                input.placeholder = '随手记下你的想法...';
-                sendBtn.textContent = '📝';
+                document.getElementById('panelMemo').classList.add('active');
+                document.getElementById('memoInput').focus();
+                stopFocusRefresh();
             } else if (mode === 'ask_ai') {
-                input.placeholder = '问 AI 任何问题...';
-                sendBtn.textContent = '➤';
+                document.getElementById('panelAI').classList.add('active');
+                document.getElementById('chatInput').focus();
+                loadChatHistory();
+                stopFocusRefresh();
             } else if (mode === 'focus') {
-                input.placeholder = '快速记录，不打断专注...';
-                sendBtn.textContent = '📌';
-                // 点击专注标签时，若番茄钟空闲则自动启动
-                fetch('/api/pomodoro/status').then(r => r.json()).then(s => {
-                    if (s.phase === 'idle') {
-                        fetch('/api/pomodoro/start', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
-                            .then(() => loadPomoStatus());
-                    }
-                }).catch(() => {});
+                document.getElementById('panelFocus').classList.add('active');
+                loadFocusPanelData();
+                startFocusRefresh();
             }
         }
 
+        // ── 随手记 (Memo) ──
+        async function sendMemo() {
+            const input = document.getElementById('memoInput');
+            const text = input.value.trim();
+            if (!text) return;
+            input.value = '';
+            const now = new Date().toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'});
+            appendMemoMsg('user', text, now);
+            try {
+                const res = await fetch('/api/memo/save', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({content: text})
+                });
+                const data = await res.json();
+                if (data.success) {
+                    appendMemoMsg('memo', '📝 已保存到长期记忆', now);
+                } else {
+                    appendMemoMsg('memo', '保存失败: ' + (data.error || '未知错误'), now);
+                }
+            } catch(e) {
+                appendMemoMsg('memo', '保存失败，请检查网络', now);
+            }
+        }
+
+        function appendMemoMsg(role, text, time) {
+            const box = document.getElementById('memoMessages');
+            const div = document.createElement('div');
+            div.className = 'chat-msg ' + (role === 'user' ? 'user' : 'memo');
+            div.innerHTML = text + '<span class="msg-time">' + (time || '') + '</span>';
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function handleMemoKeydown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMemo();
+            }
+        }
+
+        // ── 随手记语音录入 ──
+        let memoRecorder = null, memoChunks = [], memoRecording = false;
+
+        async function toggleMemoVoice() {
+            if (memoRecording) { stopMemoVoice(); return; }
+            // Check SenseVoice backend
+            try {
+                const sRes = await fetch('/api/speech/status');
+                const sData = await sRes.json();
+                if (!sData.available) {
+                    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                        memoVoiceFallback(); return;
+                    }
+                    alert('语音识别不可用。请安装 SenseVoice: pip install funasr modelscope'); return;
+                }
+            } catch(e) {
+                if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                    memoVoiceFallback(); return;
+                }
+                alert('语音服务连接失败'); return;
+            }
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                memoChunks = [];
+                memoRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                memoRecorder.ondataavailable = (e) => { if (e.data.size > 0) memoChunks.push(e.data); };
+                memoRecorder.onstop = async () => {
+                    stream.getTracks().forEach(t => t.stop());
+                    const blob = new Blob(memoChunks, { type: 'audio/webm' });
+                    const fd = new FormData();
+                    fd.append('audio', blob, 'memo_voice.webm');
+                    setMemoVoiceUI(false, '识别中...');
+                    try {
+                        const res = await fetch('/api/speech/transcribe', { method: 'POST', body: fd });
+                        const result = await res.json();
+                        if (result.success && result.text) {
+                            // Auto-save recognized text as memo
+                            const now = new Date().toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'});
+                            appendMemoMsg('user', '🎙 ' + result.text, now);
+                            const saveRes = await fetch('/api/memo/save', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({content: '[语音] ' + result.text})
+                            });
+                            const saveData = await saveRes.json();
+                            appendMemoMsg('memo', saveData.success ? '📝 语音已保存' : '保存失败', now);
+                        } else {
+                            alert('语音识别失败: ' + (result.error || '未识别到内容'));
+                        }
+                    } catch(err) { console.error('Memo voice error:', err); }
+                    setMemoVoiceUI(false, '点击录音');
+                };
+                memoRecorder.start();
+                setMemoVoiceUI(true, '录音中... 点击停止');
+                setTimeout(() => { if (memoRecording) stopMemoVoice(); }, 8000);
+            } catch(e) {
+                alert('无法访问麦克风: ' + e.message);
+            }
+        }
+
+        function stopMemoVoice() {
+            if (memoRecorder && memoRecorder.state === 'recording') memoRecorder.stop();
+            setMemoVoiceUI(false, '点击录音');
+        }
+
+        function setMemoVoiceUI(recording, hint) {
+            memoRecording = recording;
+            const btn = document.getElementById('memoVoiceBtn');
+            const hintEl = document.getElementById('memoVoiceHint');
+            if (recording) {
+                btn.classList.add('recording');
+                btn.textContent = '⏹';
+            } else {
+                btn.classList.remove('recording');
+                btn.textContent = '🎙';
+            }
+            if (hint) hintEl.textContent = hint;
+        }
+
+        function memoVoiceFallback() {
+            const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const rec = new SR();
+            rec.lang = 'zh-CN'; rec.continuous = false; rec.interimResults = false;
+            rec.onresult = async (e) => {
+                const text = e.results[0][0].transcript;
+                setMemoVoiceUI(false, '点击录音');
+                const now = new Date().toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'});
+                appendMemoMsg('user', '🎙 ' + text, now);
+                try {
+                    await fetch('/api/memo/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content:'[语音] '+text}) });
+                    appendMemoMsg('memo', '📝 语音已保存', now);
+                } catch(err) { appendMemoMsg('memo', '保存失败', now); }
+            };
+            rec.onerror = () => { setMemoVoiceUI(false, '点击录音'); };
+            rec.onend = () => { setMemoVoiceUI(false, '点击录音'); };
+            rec.start();
+            setMemoVoiceUI(true, '录音中...');
+        }
+
+        // ── 问 AI ──
         async function sendChatMessage() {
             const input = document.getElementById('chatInput');
             const text = input.value.trim();
             if (!text) return;
-
             const sendBtn = document.getElementById('chatSendBtn');
             sendBtn.disabled = true;
             input.value = '';
-
             const now = new Date().toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'});
-
-            if (chatMode === 'memo') {
-                // 随手记模式 — 直接存为 Markdown，不调用 AI
-                appendChatMsg('user', text, now);
-                try {
-                    const res = await fetch('/api/memo/save', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({content: text})
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                        appendChatMsg('memo', '📝 已保存到长期记忆 (' + data.filename + ')', now);
-                    } else {
-                        appendChatMsg('ai', '保存失败: ' + (data.error || '未知错误'), now);
-                    }
-                } catch(e) {
-                    appendChatMsg('ai', '保存失败，请检查网络', now);
+            appendChatMsg('user', text, now);
+            appendChatMsg('ai', '思考中...', now, 'chatThinking');
+            try {
+                const res = await fetch('/api/chat/send', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({text: text})
+                });
+                const data = await res.json();
+                const thinking = document.getElementById('chatThinking');
+                if (thinking) thinking.remove();
+                if (data.success) {
+                    appendChatMsg('ai', data.response, now);
+                } else {
+                    appendChatMsg('ai', '出错了: ' + (data.error || '未知错误'), now);
                 }
-            } else if (chatMode === 'focus') {
-                // 专注模式 — 快速记录，简洁确认
-                appendChatMsg('user', text, now);
-                try {
-                    const res = await fetch('/api/memo/save', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({content: text})
-                    });
-                    const data = await res.json();
-                    appendChatMsg('memo', '📌 已记录，继续专注！', now);
-                } catch(e) {
-                    appendChatMsg('memo', '📌 已记录', now);
-                }
-            } else {
-                // 问 AI 模式
-                appendChatMsg('user', text, now);
-                appendChatMsg('ai', '思考中...', now, 'chatThinking');
-                try {
-                    const res = await fetch('/api/chat/send', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({text: text})
-                    });
-                    const data = await res.json();
-                    // Remove thinking indicator
-                    const thinking = document.getElementById('chatThinking');
-                    if (thinking) thinking.remove();
-                    if (data.success) {
-                        appendChatMsg('ai', data.response, now);
-                    } else {
-                        appendChatMsg('ai', '出错了: ' + (data.error || '未知错误'), now);
-                    }
-                } catch(e) {
-                    const thinking = document.getElementById('chatThinking');
-                    if (thinking) thinking.remove();
-                    appendChatMsg('ai', '网络错误，请重试', now);
-                }
+            } catch(e) {
+                const thinking = document.getElementById('chatThinking');
+                if (thinking) thinking.remove();
+                appendChatMsg('ai', '网络错误，请重试', now);
             }
-
             sendBtn.disabled = false;
             input.focus();
         }
@@ -1367,7 +1473,7 @@
         function appendChatMsg(role, text, time, id) {
             const box = document.getElementById('chatMessages');
             const div = document.createElement('div');
-            div.className = 'chat-msg ' + (role === 'user' ? 'user' : role === 'memo' ? 'memo' : 'ai');
+            div.className = 'chat-msg ' + (role === 'user' ? 'user' : 'ai');
             if (id) div.id = id;
             div.innerHTML = text + '<span class="msg-time">' + (time || '') + '</span>';
             box.appendChild(div);
@@ -1380,7 +1486,7 @@
                 const data = await res.json();
                 if (data.success && data.messages) {
                     const box = document.getElementById('chatMessages');
-                    if (box.children.length <= 1) {  // Only load if empty or just welcome
+                    if (box.children.length <= 1) {
                         data.messages.slice(-10).forEach(m => {
                             const time = m.timestamp ? m.timestamp.split(' ')[1].substring(0,5) : '';
                             appendChatMsg(m.role === 'user' ? 'user' : 'ai', m.content, time);
@@ -1397,6 +1503,70 @@
             }
         }
 
+        // ── 专注模式 (Focus Dashboard) ──
+        async function loadFocusPanelData() {
+            try {
+                const [statusRes, workStartRes, todosRes] = await Promise.all([
+                    fetch('/api/status'),
+                    fetch('/api/work-start/today'),
+                    fetch('/api/todos')
+                ]);
+                const status = await statusRes.json();
+                const workStart = await workStartRes.json();
+                const todos = await todosRes.json();
+
+                // Work start time
+                const wsEl = document.getElementById('focusWorkStart');
+                if (workStart.start_time) {
+                    wsEl.textContent = workStart.start_time.substring(0, 5);
+                    wsEl.style.color = 'var(--green)';
+                } else {
+                    wsEl.textContent = '未开工';
+                    wsEl.style.color = 'var(--text-muted)';
+                }
+
+                // Work rate (productive_ratio)
+                const stats = status.today_stats || {};
+                const rate = Math.round((stats.productive_ratio || 0) * 100);
+                const rateEl = document.getElementById('focusWorkRate');
+                rateEl.textContent = rate + '%';
+                rateEl.style.color = rate >= 60 ? 'var(--green)' : rate >= 30 ? 'var(--amber)' : 'var(--red)';
+                const fill = document.getElementById('focusRateFill');
+                fill.style.width = rate + '%';
+                fill.style.background = rate >= 60 ? 'var(--green)' : rate >= 30 ? 'var(--amber)' : 'var(--red)';
+
+                // Todos
+                const todoList = todos.todos || [];
+                const todoStats = todos.stats || {};
+                const statsEl = document.getElementById('focusTodoStats');
+                statsEl.textContent = `(${todoStats.completed || 0}/${todoStats.total || 0})`;
+
+                const listEl = document.getElementById('focusTodoList');
+                if (todoList.length === 0) {
+                    listEl.innerHTML = '<div style="color:var(--text-muted);font-size:12px;text-align:center;padding:8px;">暂无待办</div>';
+                } else {
+                    listEl.innerHTML = todoList.slice(0, 8).map(t => {
+                        const done = t.done || t.completed;
+                        const icon = done ? '✅' : (t.priority === 'high' ? '🔴' : t.priority === 'low' ? '🔵' : '⚪');
+                        const style = done ? 'text-decoration:line-through;color:var(--text-muted);' : '';
+                        return `<div class="focus-todo-item">
+                            <span class="focus-todo-icon">${icon}</span>
+                            <span class="focus-todo-text" style="${style}">${t.title || t.text || ''}</span>
+                        </div>`;
+                    }).join('');
+                }
+
+            } catch(e) {
+                console.error('Focus panel data error:', e);
+            }
+        }
+
+        function startFocusRefresh() {
+            stopFocusRefresh();
+            focusRefreshTimer = setInterval(loadFocusPanelData, 30000); // refresh every 30s
+        }
+        function stopFocusRefresh() {
+            if (focusRefreshTimer) { clearInterval(focusRefreshTimer); focusRefreshTimer = null; }
         // ==================== 开机自启 ====================
         async function loadAutoStartStatus() {
             try {

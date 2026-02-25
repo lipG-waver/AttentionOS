@@ -473,12 +473,56 @@
             <button class="chat-mode-tab active" data-mode="ask_ai" onclick="setChatMode('ask_ai')">🤖 问 AI</button>
             <button class="chat-mode-tab" data-mode="focus" onclick="setChatMode('focus')">🎯 专注模式</button>
         </div>
-        <div class="chat-messages" id="chatMessages">
-            <div class="chat-msg ai">你好！我是 Attention OS 助手。<br>选择模式后开始对话吧 ~<span class="msg-time"></span></div>
+
+        <!-- ── 随手记面板 ── -->
+        <div class="chat-content-panel" id="panelMemo">
+            <div class="memo-messages" id="memoMessages">
+                <div class="chat-msg memo">📝 随手记：语音或文字记录想法，不会触发 AI 对话。<span class="msg-time"></span></div>
+            </div>
+            <div class="memo-voice-area" id="memoVoiceArea">
+                <button class="memo-voice-btn" id="memoVoiceBtn" onclick="toggleMemoVoice()" title="语音输入">🎙</button>
+                <span class="memo-voice-hint" id="memoVoiceHint">点击录音</span>
+            </div>
+            <div class="chat-input-area">
+                <textarea class="chat-input" id="memoInput" placeholder="随手记下你的想法..." rows="1" onkeydown="handleMemoKeydown(event)"></textarea>
+                <button class="chat-send-btn" onclick="sendMemo()">📝</button>
+            </div>
         </div>
-        <div class="chat-input-area">
-            <textarea class="chat-input" id="chatInput" placeholder="问 AI 任何问题..." rows="1" onkeydown="handleChatKeydown(event)"></textarea>
-            <button class="chat-send-btn" id="chatSendBtn" onclick="sendChatMessage()">➤</button>
+
+        <!-- ── 问 AI 面板 ── -->
+        <div class="chat-content-panel active" id="panelAI">
+            <div class="chat-messages" id="chatMessages">
+                <div class="chat-msg ai">你好！我是 Attention OS 助手。<br>有什么可以帮你的？<span class="msg-time"></span></div>
+            </div>
+            <div class="chat-input-area">
+                <textarea class="chat-input" id="chatInput" placeholder="问 AI 任何问题..." rows="1" onkeydown="handleChatKeydown(event)"></textarea>
+                <button class="chat-send-btn" id="chatSendBtn" onclick="sendChatMessage()">➤</button>
+            </div>
+        </div>
+
+        <!-- ── 专注模式面板 ── -->
+        <div class="chat-content-panel" id="panelFocus">
+            <div class="focus-dashboard" id="focusDashboard">
+                <div class="focus-stat-card">
+                    <div class="focus-stat-icon">⏰</div>
+                    <div class="focus-stat-body">
+                        <div class="focus-stat-label">今日开工</div>
+                        <div class="focus-stat-value" id="focusWorkStart">--:--</div>
+                    </div>
+                </div>
+                <div class="focus-stat-card">
+                    <div class="focus-stat-icon">📊</div>
+                    <div class="focus-stat-body">
+                        <div class="focus-stat-label">工作率</div>
+                        <div class="focus-stat-value" id="focusWorkRate">--%</div>
+                    </div>
+                    <div class="focus-rate-bar"><div class="focus-rate-fill" id="focusRateFill"></div></div>
+                </div>
+                <div class="focus-todo-section">
+                    <div class="focus-todo-header">📋 待办事项 <span id="focusTodoStats"></span></div>
+                    <div class="focus-todo-list" id="focusTodoList"><div style="color:var(--text-muted);font-size:12px;">加载中...</div></div>
+                </div>
+            </div>
         </div>
     </div>
 

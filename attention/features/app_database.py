@@ -4,27 +4,24 @@
 """
 import json
 import logging
-import os
 import re
 from pathlib import Path
 from openai import OpenAI
 
-# 加载.env文件
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
-
 from attention.config import Config
+from attention.core.llm_provider import get_llm_provider
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-# ModelScope Qwen API 配置（统一使用 Qwen 系列模型）
-DEEPSEEK_API_BASE = Config.QWEN_API_BASE
-DEEPSEEK_API_KEY = os.getenv("MODELSCOPE_ACCESS_TOKEN", "")
-DEEPSEEK_MODEL = Config.TEXT_MODEL_NAME  # Qwen/Qwen2.5-72B-Instruct
+# 模型名（端点和 key 在调用时从 llm_provider 动态获取，无需环境变量）
+DEEPSEEK_MODEL = Config.TEXT_MODEL_NAME
+
+
+def _get_active_provider_cfg():
+    """获取当前激活提供商的配置"""
+    client = get_llm_provider()
+    return client.get_config(client.get_active_provider())
 
 # 软件数据库文件路径
 APP_DATABASE_FILE = Config.DATA_DIR / "installed_apps.json"
@@ -140,9 +137,10 @@ def generate_database(raw_apps: set, raw_websites: set) -> dict:
   ]
 }}"""
 
+    _cfg = _get_active_provider_cfg()
     client = OpenAI(
-        base_url=DEEPSEEK_API_BASE,
-        api_key=DEEPSEEK_API_KEY
+        base_url=_cfg.api_base if _cfg else Config.QWEN_API_BASE,
+        api_key=_cfg.api_key if _cfg else ""
     )
     
     logger.info("正在调用大语言模型进行软件和网页数据库推理...")
