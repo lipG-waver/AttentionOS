@@ -84,6 +84,14 @@ class AttentionAgent:
             start_activity_monitoring()
             logger.info("活动监控已启动")
         
+        # 周一早晨主动推送上周洞察（异步，不阻塞启动）
+        try:
+            import threading as _threading
+            from attention.features.weekly_insight import push_weekly_insight_to_chat
+            _threading.Thread(target=push_weekly_insight_to_chat, daemon=True).start()
+        except Exception as e:
+            logger.debug(f"周洞察推送线程启动失败: {e}")
+
         # v5.2: 初始化主动规划引擎
         if self.config.ACTIVE_PLANNER.get("enabled", True):
             try:
