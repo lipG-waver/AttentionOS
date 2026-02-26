@@ -86,6 +86,9 @@ overlay.show_checkin_prompt(on_user_reply)
 | 移动端 | 桌面是深度工作的主战场，分散到移动端只会产生干扰 |
 | 团队协作功能 | 这是个人工具，不是项目管理软件 |
 | 复杂的图表 Dashboard | Dashboard 是辅助阅读的，不是主交互入口 |
+| 系统级推送通知（macOS Notification Center / Windows Toast） | 是独立弹窗的变体——用户看到一个通知气泡，需要决策是否点击，这和 `display dialog` 本质相同，都在破坏心流 |
+| 周报/月报的独立 Dashboard 页面 | 用户不会主动去看；洞察必须由系统在合适时机（如周一早晨）主动推入对话，而不是等待用户导航到页面 |
+| 带独立 UI 的插件 | 每个插件不得新增自己的设置页、弹窗或 Tab；插件的一切用户交互必须走 ChatOverlay 对话 |
 
 ---
 
@@ -104,6 +107,24 @@ overlay.show_checkin_prompt(on_user_reply)
 3. **斜杠命令系统**
    - 现状：`/pomodoro start`、`/rest 15` 等
    - 目标：`DialogueAgent` 的意图识别覆盖这些命令
+
+4. **`desktop_overlay.py` 的 `show_intervention()`**（最直接的违规）
+   - 现状：`show_intervention()` 内部调用 `_show_intervention_dialog_macos/windows/linux`，分别用 AppleScript `display dialog` / Windows `MessageBoxW` / zenity 弹出"注意力提醒"对话框——正是 Constraint #1 明确禁止的三种形式
+   - 目标：通过 `ChatOverlay._send_ai_message()` 推送介入消息，`DesktopOverlay` 只做状态追踪，不直接弹窗
+
+5. **Web Dashboard 的 Plugins Tab**
+   - 现状：用 HTML 表单启用/禁用/配置插件（`PluginManager` 对外暴露配置 API）
+   - 目标：通过对话完成，如"帮我启用声音提醒插件"、"把 webhook 地址改成 xxx"
+
+## 待清理的遗留模块
+
+以下模块的核心功能已被更符合哲学的实现替代，但文件仍然存在，**不应再向其添加功能**：
+
+| 模块 | 已被替代为 | 说明 |
+|------|-----------|------|
+| `attention/ui/pomodoro_overlay.py` | `ChatOverlay` 的计时器区域 | `PomodoroTimer._init_floating_overlay()` 已改为集成 ChatOverlay，旧浮窗类已不再启动 |
+| `attention/ui/pomodoro_overlay_process.py` | 同上 | 旧浮窗 GUI 子进程，已无调用方 |
+| `DesktopOverlay` 的小精灵状态机（`PetState`、`update_mood`）| Web 前端渲染 | macOS/Linux 主循环都只是 `while True: sleep(1)`，小精灵视觉层从未真正运行；状态数据仅通过 WebSocket 传到前端 |
 
 ---
 
