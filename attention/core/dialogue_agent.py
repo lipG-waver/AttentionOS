@@ -174,6 +174,11 @@ class DialogueAgent:
         if rest_response:
             return rest_response
 
+        # 检测开机自启控制意图
+        autostart_response = self._detect_autostart_intent(text)
+        if autostart_response:
+            return autostart_response
+
         # 正常对话 → 调用 LLM
         return self._chat_with_llm(text, ctx)
 
@@ -378,6 +383,61 @@ class DialogueAgent:
             return msg
         except Exception as e:
             logger.debug(f"自动休息声明失败: {e}")
+            return None
+
+    def _detect_autostart_intent(self, text: str) -> Optional[str]:
+        """
+        检测自然语言中的开机自启控制意图。
+
+        识别：开启/关闭/查询开机自启动状态。
+        """
+        import re
+        text_lower = text.lower()
+
+        autostart_keywords = [
+            r"开机自启", r"开机启动", r"自动?启动", r"自启动?",
+            r"登录.*自启", r"autostart", r"auto.?start", r"startup",
+        ]
+        if not any(re.search(pat, text_lower) for pat in autostart_keywords):
+            return None
+
+        disable_patterns = [r"关闭", r"关掉", r"取消", r"停止", r"不要", r"禁用", r"撤销", r"移除", r"disable"]
+        enable_patterns = [r"开启", r"打开", r"启用", r"设置", r"想要", r"加上", r"enable"]
+
+        wants_disable = any(re.search(pat, text_lower) for pat in disable_patterns)
+        wants_enable = any(re.search(pat, text_lower) for pat in enable_patterns)
+
+        try:
+            from attention.core.autostart_manager import AutoStartManager
+            from attention.core.app_settings import get_app_settings
+            mgr = AutoStartManager()
+            settings = get_app_settings()
+
+            if wants_disable and not wants_enable:
+                success = mgr.disable()
+                if success:
+                    settings.auto_start_enabled = False
+                    msg = "✅ 已关闭开机自启动，下次重启后不再自动运行。"
+                else:
+                    msg = "❌ 关闭失败，请检查系统权限后重试。"
+            elif wants_enable:
+                success = mgr.enable()
+                if success:
+                    settings.auto_start_enabled = True
+                    msg = "✅ 已开启开机自启动，下次登录系统后将在后台自动运行。"
+                else:
+                    msg = "❌ 开启失败，请检查系统权限后重试。"
+            else:
+                is_enabled = mgr.is_enabled()
+                status = "已开启" if is_enabled else "已关闭"
+                tip = "告诉我「关闭开机自启」可以关掉" if is_enabled else "告诉我「开启开机自启」可以开启"
+                msg = f"🖥 开机自启动当前{status}。{tip}。"
+
+            self._add_message("user", text)
+            self._add_message("assistant", msg, msg_type="status")
+            return msg
+        except Exception as e:
+            logger.warning(f"处理开机自启意图失败: {e}")
             return None
 
     def _handle_command(self, text: str, ctx: SessionContext) -> str:

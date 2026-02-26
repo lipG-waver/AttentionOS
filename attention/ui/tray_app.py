@@ -200,12 +200,31 @@ class AppManager:
                 settings.mark_launched()
                 if success:
                     logger.info("开机自启已自动配置")
+                    threading.Thread(target=self._notify_autostart_enabled, daemon=True).start()
                 else:
                     logger.warning("开机自启自动配置失败（可在设置中手动开启）")
             else:
                 settings.mark_launched()
         except Exception as e:
             logger.warning(f"首次启动自启动设置异常: {e}")
+
+    def _notify_autostart_enabled(self):
+        """等待 ChatOverlay 就绪后，通知用户开机自启已自动开启"""
+        import time
+        try:
+            from attention.ui.chat_overlay import get_chat_overlay
+            for _ in range(30):  # 最多等待 30 秒
+                overlay = get_chat_overlay()
+                if overlay.is_ready():
+                    overlay._send_ai_message(
+                        "✅ 已为你自动开启开机自启动，下次登录后将在后台运行。\n"
+                        "如需关闭，直接告诉我「关闭开机自启」，或在 Web 设置页切换开关。",
+                        msg_type="status",
+                    )
+                    return
+                time.sleep(1)
+        except Exception as e:
+            logger.debug(f"发送自启动通知失败: {e}")
 
     def _start_background_services(self):
         """在后台线程中启动 Web、Agent、Break、Checkin、Overlay 等服务"""
