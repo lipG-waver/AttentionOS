@@ -203,6 +203,13 @@ def run_tkinter():
                             fg=TEXT_DIM, bg=BG_DARK, cursor="hand2")
     collapse_btn.pack(side="right", padx=(0, 4))
 
+    # 新对话按钮
+    new_chat_btn = tk.Label(header, text="＋", font=(FONT_FAMILY, 14),
+                            fg=TEXT_DIM, bg=BG_DARK, cursor="hand2")
+    new_chat_btn.pack(side="right", padx=(0, 4))
+    new_chat_btn.bind("<Enter>", lambda e: new_chat_btn.config(fg=GREEN))
+    new_chat_btn.bind("<Leave>", lambda e: new_chat_btn.config(fg=TEXT_DIM))
+
     # 消息列表区域
     msg_container = tk.Frame(chat_frame, bg=BG_PANEL)
     msg_container.pack(fill="both", expand=True, padx=0, pady=0)
@@ -217,7 +224,23 @@ def run_tkinter():
     msg_canvas.configure(yscrollcommand=msg_scrollbar.set)
 
     msg_canvas.pack(side="left", fill="both", expand=True)
-    # 不显示 scrollbar，用鼠标滚轮
+    # 鼠标滚轮滚动
+    def _on_mousewheel(e):
+        if SYSTEM == "Linux":
+            if e.num == 4:
+                msg_canvas.yview_scroll(-1, "units")
+            elif e.num == 5:
+                msg_canvas.yview_scroll(1, "units")
+        else:
+            msg_canvas.yview_scroll(-1 * (e.delta // 120), "units")
+    if SYSTEM == "Linux":
+        msg_canvas.bind("<Button-4>", _on_mousewheel)
+        msg_canvas.bind("<Button-5>", _on_mousewheel)
+        msg_inner.bind("<Button-4>", _on_mousewheel)
+        msg_inner.bind("<Button-5>", _on_mousewheel)
+    else:
+        msg_canvas.bind("<MouseWheel>", _on_mousewheel)
+        msg_inner.bind("<MouseWheel>", _on_mousewheel)
 
     # 输入区域
     input_frame = tk.Frame(chat_frame, bg=BG_DARK, height=52)
@@ -464,6 +487,15 @@ def run_tkinter():
 
     # 收起按钮
     collapse_btn.bind("<Button-1>", lambda e: collapse())
+
+    # 新对话 → 清空历史
+    def new_conversation():
+        state["messages"].clear()
+        state["unread"] = 0
+        for w in msg_inner.winfo_children():
+            w.destroy()
+        emit({"type": "new_conversation"})
+    new_chat_btn.bind("<Button-1>", lambda e: new_conversation())
 
     # ─── 小球渲染 ───
     def draw_ball():

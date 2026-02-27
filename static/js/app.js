@@ -68,23 +68,57 @@
         Chart.defaults.borderColor = 'rgba(255,255,255,0.05)';
 
         // ==================== TAB SWITCHING ====================
+        var _currentTab = 'todo';
         function switchTab(name, el) {
+            _currentTab = name;
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
             document.getElementById('tab-' + name).classList.add('active');
-            if (el) el.classList.add('active');
+
+            // 面包屑导航：非任务页显示返回按钮
+            const breadcrumb = document.getElementById('viewBreadcrumb');
+            const breadcrumbTitle = document.getElementById('breadcrumbTitle');
+            const tabTitles = {
+                dashboard: '📊 仪表盘', chatlog: '💬 对话记录',
+                plugins: '🧩 插件', settings: '⚙️ 设置'
+            };
+            if (name === 'todo') {
+                breadcrumb.style.display = 'none';
+            } else {
+                breadcrumb.style.display = 'flex';
+                breadcrumbTitle.textContent = tabTitles[name] || name;
+            }
+
             if (name === 'dashboard') { ensureChartsInit(); loadData(); loadWorkStartData(); }
             if (name === 'todo') loadTodos();
             if (name === 'chatlog') { loadChatLogDates(); }
             if (name === 'plugins') { loadPlugins(); }
+            if (name === 'settings') { loadAPIProviders(); loadAutoStartStatus(); }
+
+            window.scrollTo({top: 0, behavior: 'smooth'});
+        }
+
+        function backToTasks() {
+            switchTab('todo', null);
         }
 
         function jumpToTab(name) {
-            const btn = document.querySelector('.nav-tab[onclick*="\'' + name + '\'"]');
-            switchTab(name, btn || null);
+            switchTab(name, null);
             closeOnboarding();
-            window.scrollTo({top: 0, behavior: 'smooth'});
         }
+
+        // 更多菜单
+        function toggleMoreMenu() {
+            const dd = document.getElementById('moreMenuDropdown');
+            dd.classList.toggle('show');
+        }
+        function closeMoreMenu() {
+            const dd = document.getElementById('moreMenuDropdown');
+            dd.classList.remove('show');
+        }
+        // 点击外部关闭下拉
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.more-menu-wrap')) closeMoreMenu();
+        });
 
 
         // ==================== FIRST-USE ONBOARDING ====================
@@ -604,22 +638,27 @@
                 const dlDate = t.deadline ? t.deadline.split(' ')[0] : null;
                 const dlTime = t.deadline_time || null;
                 let deadlineStr = '';
-                if(dlDate){
+                if(t.completed) {
+                    // 已完成的任务：显示完成标记，不显示逾期
+                    const completedAt = t.completed_at ? t.completed_at.substring(0,10) : '';
+                    deadlineStr = completedAt ? `<span style="color:var(--green);font-size:11px;">✓ ${completedAt} 完成</span>` : '';
+                } else if(dlDate){
                     const timeTag = dlTime ? ` ${dlTime}` : '';
-                    if(t.is_overdue) deadlineStr = `<span class="overdue">已逾期${timeTag ? ' ('+dlTime+')' : ''}</span>`;
-                    else if(t.days_until_deadline===0) deadlineStr = `<span style="color:var(--amber)">今天${timeTag}到期</span>`;
-                    else deadlineStr = `${dlDate}${timeTag} (${t.days_until_deadline}天后)`;
+                    if(t.is_overdue) deadlineStr = `<span class="overdue">⚠ 已逾期${timeTag ? ' ('+dlTime+')' : ''}</span>`;
+                    else if(t.days_until_deadline===0) deadlineStr = `<span style="color:var(--amber)">📅 今天${timeTag}到期</span>`;
+                    else deadlineStr = `<span style="color:var(--text-muted)">📅 ${dlDate}${timeTag}</span>`;
                 }
                 const pi = priIcons[t.priority]||'';
-                const priHtml = (t.priority&&t.priority!=='normal') ? `<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:var(--${priColors[t.priority]||'blue'}-dim,rgba(100,100,100,0.1));color:var(--${priColors[t.priority]||'blue'});">${priLabels[t.priority]}</span>` : '';
-                const tagsHtml = (t.tags&&t.tags.length) ? t.tags.map(tg=>`<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:var(--green-dim,rgba(16,185,129,0.1));color:var(--green);">${tg}</span>`).join(' ') : '';
-                return `<div class="todo-item">
-                    <div class="todo-check ${t.completed?'done':''}" onclick="toggleTodo('${t.id}')">${t.completed?'✓':''}</div>
+                const priHtml = (t.priority&&t.priority!=='normal'&&!t.completed) ? `<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:var(--${priColors[t.priority]||'blue'}-dim,rgba(100,100,100,0.1));color:var(--${priColors[t.priority]||'blue'});">${priLabels[t.priority]}</span>` : '';
+                const tagsHtml = (t.tags&&t.tags.length&&!t.completed) ? t.tags.map(tg=>`<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:var(--green-dim,rgba(16,185,129,0.1));color:var(--green);">${tg}</span>`).join(' ') : '';
+                const checkTitle = t.completed ? '点击取消完成' : '点击标记完成';
+                return `<div class="todo-item${t.completed?' todo-done':''}">
+                    <div class="todo-check ${t.completed?'done':''}" onclick="toggleTodo('${t.id}')" title="${checkTitle}">${t.completed?'✓':''}</div>
                     <div class="todo-body">
-                        <div class="todo-title ${t.completed?'done':''}">${pi} ${t.title}</div>
-                        <div class="todo-meta">${deadlineStr?`<span>📅 ${deadlineStr}</span>`:''}${priHtml?' '+priHtml:''}${tagsHtml?' '+tagsHtml:''}</div>
+                        <div class="todo-title ${t.completed?'done':''}">${pi?pi+' ':''}${t.title}</div>
+                        <div class="todo-meta">${deadlineStr?deadlineStr+' ':''}${priHtml}${tagsHtml?' '+tagsHtml:''}</div>
                     </div>
-                    <button class="todo-del" onclick="deleteTodo('${t.id}')">✕</button>
+                    <button class="todo-del" onclick="deleteTodo('${t.id}')" title="删除">✕</button>
                 </div>`;
             }).join('');
         }

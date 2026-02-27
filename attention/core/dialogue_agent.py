@@ -174,6 +174,11 @@ class DialogueAgent:
         if rest_response:
             return rest_response
 
+        # 检测待办创建意图
+        todo_response = self._detect_todo_intent(text)
+        if todo_response:
+            return todo_response
+
         # 正常对话 → 调用 LLM
         return self._chat_with_llm(text, ctx)
 
@@ -378,6 +383,58 @@ class DialogueAgent:
             return msg
         except Exception as e:
             logger.debug(f"自动休息声明失败: {e}")
+            return None
+
+    def _detect_todo_intent(self, text: str) -> Optional[str]:
+        """
+        检测自然语言中的待办创建意图，并实际调用 todo_manager 创建任务。
+        识别类似："帮我添加一个待办"、"记录一个任务：xxx"、"创建任务 xxx" 等表达。
+        """
+        import re
+        text_stripped = text.strip()
+
+        # 意图触发词
+        todo_triggers = [
+            r"帮[我]?[添加|加|创建|记录|建]+(一个)?[待办|任务|todo|To-?Do]",
+            r"[添加|加|创建|记录|新建]+(一个)?[待办|任务|todo|To-?Do]",
+            r"[待办|任务|todo][:：\s]",
+            r"提醒[我]?[要]?",
+        ]
+
+        matched = any(re.search(p, text_stripped, re.IGNORECASE) for p in todo_triggers)
+        if not matched:
+            return None
+
+        # 提取任务内容：去掉触发词部分，保留后面的描述
+        task_text = re.sub(
+            r"^(帮[我]?|请)?[添加|加|创建|记录|新建|提醒我要?]*(一个)?[待办|任务|todo|To-?Do]*[:：\s]*",
+            "", text_stripped, flags=re.IGNORECASE
+        ).strip()
+
+        if not task_text:
+            # 没有提取到任务内容，回退到 LLM
+            return None
+
+        try:
+            from attention.features.todo_manager import get_todo_manager
+            mgr = get_todo_manager()
+            result = mgr.smart_add(task_text, use_llm=False)
+            todo = result.get("todo", {})
+            title = todo.get("title", task_text)
+            priority = todo.get("priority", "normal")
+            deadline = todo.get("deadline", "")
+
+            pri_label = {"urgent": "🔴 紧急", "high": "🟠 重要", "low": "🔵 低优先"}.get(priority, "")
+            dl_label = f"，截止 {deadline}" if deadline else ""
+            pri_str = f"，{pri_label}" if pri_label else ""
+
+            msg = f"✅ 已添加待办：「{title}」{pri_str}{dl_label}"
+            self._add_message("user", text)
+            self._add_message("assistant", msg, msg_type="chat")
+            logger.info(f"待办已创建: {title}")
+            return msg
+        except Exception as e:
+            logger.warning(f"待办创建失败: {e}")
             return None
 
     def _handle_command(self, text: str, ctx: SessionContext) -> str:
