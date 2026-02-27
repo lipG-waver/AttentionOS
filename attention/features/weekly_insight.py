@@ -214,3 +214,102 @@ def _analyze_with_llm(weekly_data: Dict, stats: Dict) -> Optional[Dict[str, Any]
         temperature=0.7,
         timeout=15,
     )
+
+
+# ============================================================
+# 主动推送：周一早晨通过 ChatOverlay 推送上周洞察
+# ============================================================
+
+_PUSH_RECORD_FILE = Config.DATA_DIR / "weekly_insight_push.json"
+
+
+def push_weekly_insight_to_chat(force: bool = False) -> bool:
+    """
+    在周一首次启动时，将上周效率洞察主动推送到 ChatOverlay 对话。
+
+    Args:
+        force: True 跳过星期和去重检查（手动触发时使用）
+
+    Returns:
+        True 表示已推送，False 表示跳过
+    """
+    from datetime import date as _date
+
+    today = _date.today()
+
+    # 只在周一推送（weekday() == 0）
+    if not force and today.weekday() != 0:
+        return False
+
+    # 今天是否已经推送过
+    if not force:
+        try:
+            if _PUSH_RECORD_FILE.exists():
+                record = json.loads(_PUSH_RECORD_FILE.read_text(encoding="utf-8"))
+                if record.get("last_push_date") == today.isoformat():
+                    logger.debug("周洞察今日已推送，跳过")
+                    return False
+        except Exception:
+            pass
+
+    # 生成洞察数据（异步执行，避免阻塞启动）
+    try:
+        insight_data = generate_weekly_insight()
+    except Exception as e:
+        logger.warning(f"生成周洞察数据失败: {e}")
+        return False
+
+    stats = insight_data.get("stats", {})
+    insight = insight_data.get("insight")
+    period = insight_data.get("period", "")
+
+    # 没有数据时不推送
+    if stats.get("active_days", 0) == 0:
+        logger.debug("上周无活跃数据，跳过周洞察推送")
+        return False
+
+    # 组装消息
+    lines = [f"📊 上周回顾（{period}）"]
+    lines.append(
+        f"活跃 {stats['active_days']} 天，"
+        f"平均专注率 {stats['avg_productive_ratio']:.0%}，"
+        f"分心率 {stats['avg_distracted_ratio']:.0%}"
+    )
+    if stats.get("total_pomo", 0) > 0:
+        lines.append(
+            f"完成 {stats['total_pomo']} 个番茄钟，"
+            f"专注 {stats.get('total_focus_minutes', 0)} 分钟"
+        )
+    if stats.get("total_goals_set", 0) > 0:
+        lines.append(
+            f"目标完成率 {stats['total_goals_completed']}/{stats['total_goals_set']}"
+        )
+    if insight:
+        if insight.get("pattern"):
+            lines.append(f"💡 {insight['pattern']}")
+        if insight.get("suggestion"):
+            lines.append(f"🎯 本周建议：{insight['suggestion']}")
+
+    message = "\n".join(lines)
+
+    # 推送到 ChatOverlay
+    try:
+        from attention.ui.chat_overlay import get_chat_overlay
+        overlay = get_chat_overlay()
+        overlay._send_ai_message(message, msg_type="insight")
+        logger.info(f"周洞察已推送到对话: {period}")
+    except Exception as e:
+        logger.warning(f"推送周洞察到 ChatOverlay 失败: {e}")
+        return False
+
+    # 记录推送时间，避免同一天重复推送
+    try:
+        Config.ensure_dirs()
+        _PUSH_RECORD_FILE.write_text(
+            json.dumps({"last_push_date": today.isoformat()}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+    return True
