@@ -1249,6 +1249,37 @@ async def set_autostart(request: Request):
     }
 
 
+# ==================== 主题设置 API ====================
+
+@app.get("/api/settings/theme")
+@_safe_route
+async def get_theme():
+    """获取当前界面主题"""
+    from attention.core.app_settings import get_app_settings
+    return {"theme": get_app_settings().theme}
+
+
+@app.post("/api/settings/theme")
+@_safe_route
+async def set_app_theme(request: Request):
+    """设置界面主题（dark/light），并同步到悬浮窗"""
+    from attention.core.app_settings import get_app_settings
+    params = dict(request.query_params)
+    theme = params.get("theme", "").strip()
+    if theme not in ("dark", "light"):
+        return {"success": False, "error": "无效的主题值，仅支持 dark 或 light"}
+    get_app_settings().theme = theme
+    # 同步到已运行的悬浮窗
+    try:
+        from attention.ui.chat_overlay import get_chat_overlay
+        overlay = get_chat_overlay()
+        if overlay.is_ready():
+            overlay._send({"cmd": "set_theme", "theme": theme})
+    except Exception:
+        pass
+    return {"success": True, "theme": theme}
+
+
 # ==================== 随手记 API ====================
 
 @app.post("/api/memo/save")

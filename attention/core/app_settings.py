@@ -18,6 +18,7 @@ SETTINGS_FILE = Config.DATA_DIR / "app_settings.json"
 _DEFAULTS: Dict[str, Any] = {
     "auto_start_enabled": False,
     "has_launched": False,   # 是否曾经启动过（用于首次启动检测）
+    "theme": "dark",         # 界面主题：dark | light
 }
 
 
@@ -86,6 +87,19 @@ class AppSettingsManager:
         """标记已完成首次启动"""
         if not self._data.get("has_launched"):
             self._data["has_launched"] = True
+            self._save()
+
+    # ------ 界面主题 ------
+
+    @property
+    def theme(self) -> str:
+        v = self._data.get("theme", "dark")
+        return v if v in ("dark", "light") else "dark"
+
+    @theme.setter
+    def theme(self, value: str):
+        if value in ("dark", "light"):
+            self._data["theme"] = value
             self._save()
 
 

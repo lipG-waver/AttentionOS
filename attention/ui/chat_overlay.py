@@ -229,6 +229,12 @@ class ChatOverlay:
                 cmd = [sys.executable, str(script)]
                 if self._force_headless:
                     cmd.append("--headless")
+                # 传入当前主题，让子进程以正确配色启动
+                try:
+                    from attention.core.app_settings import get_app_settings
+                    cmd.extend(["--theme", get_app_settings().theme])
+                except Exception:
+                    pass
 
                 spawn_time = time.monotonic()
 

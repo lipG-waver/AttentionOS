@@ -39,22 +39,89 @@ import traceback
 SYSTEM = platform.system()
 
 # ─── 设计系统 ───
-BG_DARK = "#0d0d14"
-BG_PANEL = "#141420"
-BG_INPUT = "#1c1c2e"
-BG_MSG_AI = "#1e2a3a"
-BG_MSG_USER = "#1a3a2a"
-BG_MSG_NUDGE = "#3a2a1a"
-BG_MSG_STATUS = "#1a1a2e"
-TEXT_PRIMARY = "#e0e4ec"
-TEXT_DIM = "#6b7084"
-TEXT_MUTED = "#4a4e5a"
-GREEN = "#34d399"
-GREEN_DIM = "#1a3a2a"
-AMBER = "#fbbf24"
-RED = "#f87171"
-BLUE = "#60a5fa"
-PURPLE = "#a78bfa"
+# 深色主题（默认）
+_PALETTE_DARK = {
+    "BG_DARK":      "#0d0d14",
+    "BG_PANEL":     "#141420",
+    "BG_INPUT":     "#1c1c2e",
+    "BG_HOVER":     "#2a2a3e",
+    "BG_MSG_AI":    "#1e2a3a",
+    "BG_MSG_USER":  "#1a3a2a",
+    "BG_MSG_NUDGE": "#3a2a1a",
+    "BG_MSG_STATUS":"#1a1a2e",
+    "TEXT_PRIMARY": "#e0e4ec",
+    "TEXT_DIM":     "#6b7084",
+    "TEXT_MUTED":   "#4a4e5a",
+    "GREEN":        "#34d399",
+    "GREEN_DIM":    "#1a3a2a",
+    "AMBER":        "#fbbf24",
+    "RED":          "#f87171",
+    "BLUE":         "#60a5fa",
+    "PURPLE":       "#a78bfa",
+}
+# 浅色主题
+_PALETTE_LIGHT = {
+    "BG_DARK":      "#f0f1f5",
+    "BG_PANEL":     "#ffffff",
+    "BG_INPUT":     "#e4e6ef",
+    "BG_HOVER":     "#d0d3e0",
+    "BG_MSG_AI":    "#dceeff",
+    "BG_MSG_USER":  "#dcf0e4",
+    "BG_MSG_NUDGE": "#fff3e0",
+    "BG_MSG_STATUS":"#ebebff",
+    "TEXT_PRIMARY": "#1a1c24",
+    "TEXT_DIM":     "#5a5e6a",
+    "TEXT_MUTED":   "#8a8e9a",
+    "GREEN":        "#16a34a",
+    "GREEN_DIM":    "#dcfce7",
+    "AMBER":        "#d97706",
+    "RED":          "#dc2626",
+    "BLUE":         "#2563eb",
+    "PURPLE":       "#7c3aed",
+}
+
+BG_DARK      = _PALETTE_DARK["BG_DARK"]
+BG_PANEL     = _PALETTE_DARK["BG_PANEL"]
+BG_INPUT     = _PALETTE_DARK["BG_INPUT"]
+BG_HOVER     = _PALETTE_DARK["BG_HOVER"]
+BG_MSG_AI    = _PALETTE_DARK["BG_MSG_AI"]
+BG_MSG_USER  = _PALETTE_DARK["BG_MSG_USER"]
+BG_MSG_NUDGE = _PALETTE_DARK["BG_MSG_NUDGE"]
+BG_MSG_STATUS= _PALETTE_DARK["BG_MSG_STATUS"]
+TEXT_PRIMARY = _PALETTE_DARK["TEXT_PRIMARY"]
+TEXT_DIM     = _PALETTE_DARK["TEXT_DIM"]
+TEXT_MUTED   = _PALETTE_DARK["TEXT_MUTED"]
+GREEN        = _PALETTE_DARK["GREEN"]
+GREEN_DIM    = _PALETTE_DARK["GREEN_DIM"]
+AMBER        = _PALETTE_DARK["AMBER"]
+RED          = _PALETTE_DARK["RED"]
+BLUE         = _PALETTE_DARK["BLUE"]
+PURPLE       = _PALETTE_DARK["PURPLE"]
+
+
+def _apply_palette(palette: dict):
+    """将调色板应用到模块级颜色变量"""
+    global BG_DARK, BG_PANEL, BG_INPUT, BG_HOVER
+    global BG_MSG_AI, BG_MSG_USER, BG_MSG_NUDGE, BG_MSG_STATUS
+    global TEXT_PRIMARY, TEXT_DIM, TEXT_MUTED
+    global GREEN, GREEN_DIM, AMBER, RED, BLUE, PURPLE
+    BG_DARK       = palette["BG_DARK"]
+    BG_PANEL      = palette["BG_PANEL"]
+    BG_INPUT      = palette["BG_INPUT"]
+    BG_HOVER      = palette["BG_HOVER"]
+    BG_MSG_AI     = palette["BG_MSG_AI"]
+    BG_MSG_USER   = palette["BG_MSG_USER"]
+    BG_MSG_NUDGE  = palette["BG_MSG_NUDGE"]
+    BG_MSG_STATUS = palette["BG_MSG_STATUS"]
+    TEXT_PRIMARY  = palette["TEXT_PRIMARY"]
+    TEXT_DIM      = palette["TEXT_DIM"]
+    TEXT_MUTED    = palette["TEXT_MUTED"]
+    GREEN         = palette["GREEN"]
+    GREEN_DIM     = palette["GREEN_DIM"]
+    AMBER         = palette["AMBER"]
+    RED           = palette["RED"]
+    BLUE          = palette["BLUE"]
+    PURPLE        = palette["PURPLE"]
 
 # 小球尺寸
 BALL_SIZE = 56
@@ -276,21 +343,23 @@ def run_tkinter():
 
     def _make_focus_btn(parent, text, fg_color, action_name):
         """创建专注控制按钮"""
+        btn_bg = BG_INPUT
         btn = tk.Label(
             parent, text=text,
             font=(FONT_FAMILY, 11, "bold"),
-            fg=fg_color, bg="#1c1c2e",
+            fg=fg_color, bg=btn_bg,
             cursor="hand2", padx=12, pady=4,
         )
         btn.bind("<Button-1>", lambda e: emit({"type": "action", "action": action_name}))
         # hover 效果
-        btn.bind("<Enter>", lambda e: btn.config(bg="#2a2a3e"))
-        btn.bind("<Leave>", lambda e: btn.config(bg="#1c1c2e"))
+        btn.bind("<Enter>", lambda e: btn.config(bg=BG_HOVER))
+        btn.bind("<Leave>", lambda e: btn.config(bg=BG_INPUT))
         return btn
 
     def update_focus_bar():
-        """根据当前 phase 更新专注控制栏的按钮"""
+        """根据当前 phase 和 mode 更新专注控制栏的按钮"""
         phase = state["phase"]
+        mode = state["mode"]
         # 清除旧按钮
         for w in focus_bar_widgets:
             w.destroy()
@@ -318,6 +387,12 @@ def run_tkinter():
             b1.pack(side="left", padx=(12, 4), pady=4)
             focus_bar_widgets.append(b1)
             focus_bar.pack(fill="x", side="bottom", before=mode_frame)
+        elif phase == "idle" and mode == "focus":
+            # 空闲 + 专注标签：显示"开始专注"按钮，等待用户主动确认
+            b1 = _make_focus_btn(focus_bar, "▶ 开始专注", GREEN, "start_focus")
+            b1.pack(side="left", padx=(12, 4), pady=4)
+            focus_bar_widgets.append(b1)
+            focus_bar.pack(fill="x", side="bottom", before=mode_frame)
 
     # ─── 模式标签栏（随手记 / 问 AI / 专注模式）───
     mode_frame = tk.Frame(chat_frame, bg=BG_DARK, height=32)
@@ -339,16 +414,10 @@ def run_tkinter():
             else:
                 btn.config(fg=TEXT_DIM, bg=BG_DARK)
 
-        # 点击专注标签时，若番茄钟空闲则自动启动
-        if m == "focus" and state["phase"] == "idle":
-            emit({"type": "action", "action": "start_focus"})
+        # 切换标签时更新控制栏（专注标签在空闲时显示"开始专注"按钮）
+        if state["expanded"]:
+            update_focus_bar()
 
-        # 更新输入框占位文字颜色提示
-        placeholders = {
-            "memo":  "记下灵感，保存为笔记...",
-            "ai":    "和 AI 聊聊...",
-            "focus": "快速记录想法，不打断专注...",
-        }
         input_entry.config(fg=TEXT_PRIMARY)
 
     for mode_key, mode_label in MODE_DEFS:
@@ -681,6 +750,41 @@ def run_tkinter():
                 if m in ("ai", "memo", "focus"):
                     set_mode_ui(m)
 
+            elif act == "set_theme":
+                theme = cmd.get("theme", "dark")
+                _apply_palette(_PALETTE_LIGHT if theme == "light" else _PALETTE_DARK)
+                # 更新所有静态组件颜色
+                root.configure(bg=BG_DARK)
+                ball_canvas.configure(bg=BG_DARK)
+                chat_frame.configure(bg=BG_PANEL)
+                header.configure(bg=BG_DARK)
+                header_left.configure(bg=BG_DARK)
+                title_label.configure(fg=TEXT_PRIMARY, bg=BG_DARK)
+                timer_label.configure(fg=TEXT_DIM, bg=BG_DARK)
+                collapse_btn.configure(fg=TEXT_DIM, bg=BG_DARK)
+                new_chat_btn.configure(fg=TEXT_DIM, bg=BG_DARK)
+                msg_container.configure(bg=BG_PANEL)
+                msg_canvas.configure(bg=BG_PANEL)
+                msg_inner.configure(bg=BG_PANEL)
+                input_frame.configure(bg=BG_DARK)
+                input_entry.configure(bg=BG_INPUT, fg=TEXT_PRIMARY,
+                                      insertbackground=TEXT_PRIMARY)
+                send_btn.configure(fg=GREEN, bg=BG_INPUT)
+                focus_bar.configure(bg=BG_DARK)
+                mode_frame.configure(bg=BG_DARK)
+                for key, btn in mode_btns.items():
+                    is_active = (key == state["mode"])
+                    btn.configure(
+                        fg=GREEN if is_active else TEXT_DIM,
+                        bg=BG_PANEL if is_active else BG_DARK,
+                    )
+                # 重绘消息和小球
+                if state["expanded"]:
+                    render_messages()
+                    update_focus_bar()
+                    update_header()
+                draw_ball()
+
             elif act == "quit":
                 try:
                     root.destroy()
@@ -773,6 +877,14 @@ def main():
 
     # 支持 --headless 参数（父进程检测到连续崩溃后传入）
     force_headless = "--headless" in sys.argv
+
+    # 支持 --theme 参数，在启动时应用初始主题
+    if "--theme" in sys.argv:
+        idx = sys.argv.index("--theme")
+        if idx + 1 < len(sys.argv):
+            init_theme = sys.argv[idx + 1]
+            _apply_palette(_PALETTE_LIGHT if init_theme == "light" else _PALETTE_DARK)
+            log(f"初始主题: {init_theme}")
 
     log(f"对话悬浮窗子进程启动 (platform={SYSTEM}, force_headless={force_headless})")
 

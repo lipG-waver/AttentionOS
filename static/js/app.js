@@ -10,6 +10,8 @@
             document.documentElement.setAttribute('data-theme', theme);
             try { localStorage.setItem('aos-theme', theme); } catch(e) {}
             updateChartColors(theme);
+            // 同步到后端，让悬浮窗也跟随切换
+            try { fetch('/api/settings/theme?theme=' + theme, {method: 'POST'}); } catch(e) {}
         }
         function toggleTheme() {
             var current = document.documentElement.getAttribute('data-theme') || 'dark';
@@ -43,7 +45,14 @@
         // Apply saved theme immediately (before DOMContentLoaded)
         (function() {
             var t = getStoredTheme();
-            if (t) applyTheme(t);
+            if (t) {
+                applyTheme(t);
+            } else {
+                // 本地无偏好时，从后端读取（与悬浮窗保持一致）
+                fetch('/api/settings/theme').then(function(r) { return r.json(); })
+                    .then(function(d) { if (d && d.theme) applyTheme(d.theme); })
+                    .catch(function() {});
+            }
             // Sync settings toggle after DOM loads
             document.addEventListener('DOMContentLoaded', function() {
                 syncThemeSettingsToggle();
