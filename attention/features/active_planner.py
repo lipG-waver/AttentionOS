@@ -118,6 +118,14 @@ class ActivePlanner:
             self._off_plan_count = 0  # 重置偏离计数
 
         logger.info(f"用户声明休息 {minutes} 分钟: {reason}")
+
+        # 通知 BreakReminder 开始追踪休息时间，以便到时间发送结束提醒
+        try:
+            from attention.features.break_reminder import get_break_reminder
+            get_break_reminder().start_rest_tracking(override_minutes=minutes)
+        except Exception as e:
+            logger.debug(f"通知 BreakReminder 开始休息追踪失败: {e}")
+
         return self._rest_session.to_dict()
 
     def end_rest(self) -> Dict[str, Any]:
@@ -127,6 +135,14 @@ class ActivePlanner:
                 self._rest_session.ended_at = datetime.now()
                 result = self._rest_session.to_dict()
                 logger.info("用户主动结束休息")
+
+                # 通知 BreakReminder 停止休息追踪
+                try:
+                    from attention.features.break_reminder import get_break_reminder
+                    get_break_reminder().stop_rest_tracking()
+                except Exception as e:
+                    logger.debug(f"通知 BreakReminder 停止休息追踪失败: {e}")
+
                 return result
             return {"is_active": False}
 

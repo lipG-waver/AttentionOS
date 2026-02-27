@@ -464,6 +464,41 @@
                         <span class="sr-label status-text" id="checkinStatusText">--</span>
                         <button class="btn btn-sm btn-blue" onclick="triggerCheckinPopup()">测试弹窗</button>
                     </div>
+
+                    <div class="card-title" style="margin-top:24px;">☕ 休息提醒</div>
+                    <div class="settings-grid">
+                        <div class="setting-group">
+                            <label class="setting-label">启用休息提醒</label>
+                            <label class="switch"><input type="checkbox" id="breakEnabled" checked onchange="updateBreakSettings()"><span class="slider"></span></label>
+                        </div>
+                        <div class="setting-group">
+                            <label class="setting-label">工作间隔（分钟）</label>
+                            <input type="number" class="setting-input" id="breakInterval" min="15" max="120" value="45" onchange="updateBreakSettings()">
+                        </div>
+                        <div class="setting-group">
+                            <label class="setting-label">工作提醒提示音</label>
+                            <label class="switch"><input type="checkbox" id="breakSound" checked onchange="updateBreakSettings()"><span class="slider"></span></label>
+                        </div>
+                        <div class="setting-group">
+                            <label class="setting-label">休息结束提醒</label>
+                            <label class="switch"><input type="checkbox" id="breakRestEndEnabled" checked onchange="updateBreakSettings()"><span class="slider"></span></label>
+                        </div>
+                        <div class="setting-group">
+                            <label class="setting-label">休息提醒时间（分钟）</label>
+                            <input type="number" class="setting-input" id="breakRestEndMinutes" min="1" max="60" value="10" onchange="updateBreakSettings()">
+                        </div>
+                        <div class="setting-group">
+                            <label class="setting-label">休息结束提示音</label>
+                            <label class="switch"><input type="checkbox" id="breakRestEndSound" checked onchange="updateBreakSettings()"><span class="slider"></span></label>
+                        </div>
+                        <div class="setting-group">
+                            <label class="setting-label">休息结束对话提醒</label>
+                            <label class="switch"><input type="checkbox" id="breakRestEndChat" checked onchange="updateBreakSettings()"><span class="slider"></span></label>
+                        </div>
+                    </div>
+                    <div class="status-row" style="margin-top:12px;">
+                        <span class="sr-label status-text" id="breakStatusText">--</span>
+                    </div>
                 </div>
             </div>
         </div>
