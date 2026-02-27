@@ -414,8 +414,8 @@ class TodoItem:
             dl_date = dl_dt.date() if " " in (self.deadline or "") else datetime.strptime(self.deadline, "%Y-%m-%d").date()
             delta_days = (dl_date - now.date()).days
             d["days_until_deadline"] = delta_days
-            # is_overdue: 只有真正过了截止时间才算逾期
-            d["is_overdue"] = now > dl_dt
+            # is_overdue: 只有未完成且真正过了截止时间才算逾期
+            d["is_overdue"] = not self.completed and now > dl_dt
             # 提取时间部分供前端显示
             d["deadline_time"] = self.deadline.split(" ")[1] if " " in (self.deadline or "") else None
         else:

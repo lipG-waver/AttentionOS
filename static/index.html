@@ -124,27 +124,46 @@
     <div class="app">
         <header>
             <div class="logo">
-                <h1>Attention OS</h1>
-                <span class="ver">v4.0</span>
+                <div class="logo-mark">A</div>
+                <div>
+                    <h1>Attention OS</h1>
+                    <div class="status-inline">
+                        <div class="live-dot" id="statusDot"></div>
+                        <span class="header-time" id="statusText">连接中...</span>
+                    </div>
+                </div>
             </div>
             <div class="header-right">
+                <!-- 仪表盘快捷入口 -->
+                <button class="header-btn" onclick="switchTab('dashboard',this)" id="dashboardHeaderBtn" title="仪表盘">
+                    <span>📊</span> 仪表盘
+                </button>
+                <!-- 更多下拉 -->
+                <div class="more-menu-wrap">
+                    <button class="header-btn" id="moreMenuBtn" onclick="toggleMoreMenu()" title="更多">
+                        <span>⋯</span> 更多
+                    </button>
+                    <div class="more-menu-dropdown" id="moreMenuDropdown">
+                        <button class="more-menu-item" onclick="switchTab('chatlog',null);closeMoreMenu()">💬 对话记录</button>
+                        <button class="more-menu-item" onclick="switchTab('plugins',null);closeMoreMenu()">🧩 插件</button>
+                        <div class="more-menu-sep"></div>
+                        <button class="more-menu-item" onclick="openReport();closeMoreMenu()">📋 日报</button>
+                    </div>
+                </div>
+                <!-- 设置 -->
+                <button class="header-btn icon-only" onclick="switchTab('settings',this)" title="设置">⚙</button>
+                <!-- 主题切换 -->
                 <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="切换日间/夜间模式">
                     <span class="icon-sun">☀️</span>
                     <span class="icon-moon">🌙</span>
                 </button>
-                <button class="btn btn-sm btn-blue" onclick="openReport()">📊 日报</button>
-                <div class="live-dot" id="statusDot"></div>
-                <span class="header-time" id="statusText">连接中...</span>
             </div>
         </header>
 
-        <!-- Nav Tabs -->
-        <div class="nav-tabs">
-            <button class="nav-tab active" onclick="switchTab('todo', this)">📋 任务</button>
-            <button class="nav-tab" onclick="switchTab('dashboard', this)">📊 仪表盘</button>
-            <button class="nav-tab" onclick="switchTab('chatlog', this)">💬 对话记录</button>
-            <button class="nav-tab" onclick="switchTab('plugins', this)">🧩 插件</button>
-            <button class="nav-tab" onclick="switchTab('settings', this)">⚙️ 设置</button>
+        <!-- 当前视图标题栏（非任务视图时显示）-->
+        <div class="view-breadcrumb" id="viewBreadcrumb" style="display:none;">
+            <button class="breadcrumb-back" onclick="backToTasks()">← 任务</button>
+            <span class="breadcrumb-title" id="breadcrumbTitle"></span>
         </div>
 
         <!-- ==================== TAB: DASHBOARD ==================== -->
@@ -252,16 +271,6 @@
 
         <!-- ==================== TAB: TODO ==================== -->
         <div class="tab-content active" id="tab-todo">
-            <div class="quickstart-banner">
-                <div>
-                    <div class="quickstart-title">✨ 今天先做这三件事：写任务 → 查看仪表盘 → 开始专注</div>
-                    <div class="quickstart-sub">如果你是第一次使用，建议先运行引导，3 分钟即可完成基础配置。</div>
-                </div>
-                <div class="quickstart-actions">
-                    <button class="btn btn-sm" onclick="openOnboarding()">新手引导</button>
-                    <button class="btn btn-sm btn-blue" onclick="jumpToTab('dashboard')">查看仪表盘</button>
-                </div>
-            </div>
             <div class="g2e">
                 <div class="card">
                     <div class="todo-header">
@@ -527,19 +536,5 @@
     </div>
 
     <script src="/static/js/app.js"></script>
-    <script>
-        // Init: load API providers on settings tab
-        var _origSwitchTab = switchTab;
-        switchTab = function(name, el) {
-            _origSwitchTab(name, el);
-            if (name === 'settings') { loadAPIProviders(); loadAutoStartStatus(); }
-        };
-        // Load providers on first visit to settings
-        document.addEventListener('DOMContentLoaded', function() {
-            // Preload API settings data
-            setTimeout(loadAPIProviders, 1000);
-            setTimeout(loadAutoStartStatus, 1200);
-        });
-    </script>
 </body>
 </html>

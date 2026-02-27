@@ -367,6 +367,14 @@ class ChatOverlay:
             # 定期保存日志
             self._maybe_save_log()
 
+        elif msg_type == "new_conversation":
+            logger.debug("用户开启了新对话")
+            try:
+                from attention.core.dialogue_agent import get_dialogue_agent
+                get_dialogue_agent().clear_history()
+            except Exception:
+                pass
+
     def _process_user_message(self, text: str, mode: str = "ai"):
         """处理用户消息（异步，在后台线程）"""
         try:
