@@ -687,6 +687,36 @@ async def skip_break_overlay():
         return {"success": False, "error": str(e)}
 
 
+# ==================== 休息提醒设置API ====================
+
+@app.get("/api/break/settings")
+@_safe_route
+async def get_break_settings():
+    from attention.features.break_reminder import get_break_reminder
+    reminder = get_break_reminder()
+    return {"settings": reminder.settings.to_dict(), "status": reminder.get_status()}
+
+
+@app.post("/api/break/settings")
+async def update_break_settings(request: Request):
+    params = dict(request.query_params)
+    from attention.features.break_reminder import get_break_reminder
+    reminder = get_break_reminder()
+    kwargs = {}
+    for int_key in ("interval_minutes", "break_duration_minutes",
+                     "rest_end_reminder_minutes"):
+        if int_key in params:
+            kwargs[int_key] = int(params[int_key])
+    for bool_key in ("enabled", "sound_enabled",
+                      "rest_end_reminder_enabled", "rest_end_sound_enabled",
+                      "rest_end_chat_enabled"):
+        if bool_key in params:
+            kwargs[bool_key] = _parse_bool(params[bool_key])
+    if kwargs:
+        reminder.update_settings(**kwargs)
+    return {"success": True, "settings": reminder.settings.to_dict()}
+
+
 # ==================== 每小时签到API ====================
 
 @app.get("/api/checkin/status")

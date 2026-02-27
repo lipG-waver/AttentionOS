@@ -172,6 +172,7 @@
             // Load todos first since it's the default tab
             loadTodos();
             loadCheckinSettings();
+            loadBreakSettings();
             connectWebSocket();
             if (shouldShowOnboarding()) {
                 setTimeout(openOnboarding, 700);
@@ -567,6 +568,44 @@
             });
             await fetch('/api/checkin/settings?' + p, {method:'POST'});
             loadCheckinSettings();
+        }
+
+        // ==================== BREAK SETTINGS ====================
+        async function loadBreakSettings() {
+            try {
+                const r = await (await fetch('/api/break/settings')).json();
+                const s = r.settings || {};
+                document.getElementById('breakEnabled').checked = s.enabled !== false;
+                document.getElementById('breakInterval').value = s.interval_minutes || 45;
+                document.getElementById('breakSound').checked = s.sound_enabled !== false;
+                document.getElementById('breakRestEndEnabled').checked = s.rest_end_reminder_enabled !== false;
+                document.getElementById('breakRestEndMinutes').value = s.rest_end_reminder_minutes || 10;
+                document.getElementById('breakRestEndSound').checked = s.rest_end_sound_enabled !== false;
+                document.getElementById('breakRestEndChat').checked = s.rest_end_chat_enabled !== false;
+                const st = r.status || {};
+                const t = document.getElementById('breakStatusText');
+                if (st.running && st.next_reminder) {
+                    const m = st.minutes_until_next;
+                    t.textContent = m > 0 ? '下次提醒: ' + st.next_reminder + ' (' + m + '分钟后)' : '即将提醒';
+                } else if (s.enabled) {
+                    t.textContent = '休息提醒已启用';
+                } else {
+                    t.textContent = '休息提醒已禁用';
+                }
+            } catch(e) {}
+        }
+        async function updateBreakSettings() {
+            const p = new URLSearchParams({
+                enabled: document.getElementById('breakEnabled').checked,
+                interval_minutes: document.getElementById('breakInterval').value,
+                sound_enabled: document.getElementById('breakSound').checked,
+                rest_end_reminder_enabled: document.getElementById('breakRestEndEnabled').checked,
+                rest_end_reminder_minutes: document.getElementById('breakRestEndMinutes').value,
+                rest_end_sound_enabled: document.getElementById('breakRestEndSound').checked,
+                rest_end_chat_enabled: document.getElementById('breakRestEndChat').checked,
+            });
+            await fetch('/api/break/settings?' + p, {method:'POST'});
+            loadBreakSettings();
         }
 
         // ==================== DAILY REPORT ====================
