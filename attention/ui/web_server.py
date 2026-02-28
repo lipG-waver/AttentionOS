@@ -417,6 +417,78 @@ async def parse_todo_text(request: Request):
     return {"success": True, "parsed": parsed}
 
 
+@app.post("/api/todos/bulk-add")
+@_safe_route
+async def bulk_add_todos(request: Request):
+    """
+    批量添加多条待办（相同标题，不同日期）。
+
+    Body:
+      title: str          — 任务标题
+      dates: List[str]    — YYYY-MM-DD 格式的日期列表
+      priority: str       — 优先级（可选，默认 normal）
+      tags: List[str]     — 标签（可选）
+
+    或使用 recurrence 模式自动生成日期：
+      recurrence: "monthly" | "weekly"
+      day_of_month: int   — 每月第几日（monthly 时必填）
+      day_of_week: int    — 星期几 0=周一（weekly 时必填）
+      start_date: str     — 开始日期 YYYY-MM-DD（可选，默认今天）
+      end_date: str       — 结束日期 YYYY-MM-DD（必填）
+    """
+    from datetime import datetime
+    from attention.features.todo_manager import (
+        get_todo_manager, generate_monthly_dates, generate_weekly_dates
+    )
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    title = body.get("title", "").strip()
+    if not title:
+        return {"success": False, "error": "标题不能为空"}
+
+    priority = body.get("priority", "normal")
+    tags = body.get("tags") or []
+
+    dates = body.get("dates")
+    recurrence = body.get("recurrence")
+
+    if not dates and recurrence:
+        end_date_str = body.get("end_date", "")
+        start_date_str = body.get("start_date", datetime.now().strftime("%Y-%m-%d"))
+        try:
+            start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
+            end_dt = datetime.strptime(end_date_str, "%Y-%m-%d")
+        except ValueError:
+            return {"success": False, "error": "日期格式应为 YYYY-MM-DD"}
+
+        if recurrence == "monthly":
+            day_of_month = body.get("day_of_month")
+            if not day_of_month:
+                return {"success": False, "error": "monthly 模式需要 day_of_month"}
+            dates = generate_monthly_dates(int(day_of_month), start_dt, end_dt)
+        elif recurrence == "weekly":
+            day_of_week = body.get("day_of_week")
+            if day_of_week is None:
+                return {"success": False, "error": "weekly 模式需要 day_of_week (0=周一)"}
+            dates = generate_weekly_dates(int(day_of_week), start_dt, end_dt)
+        else:
+            return {"success": False, "error": f"不支持的 recurrence 类型: {recurrence}"}
+
+    if not dates:
+        return {"success": False, "error": "日期列表不能为空，请提供 dates 或 recurrence 参数"}
+
+    mgr = get_todo_manager()
+    todos = mgr.bulk_add(title, dates, priority=priority, tags=tags)
+    return {
+        "success": True,
+        "count": len(todos),
+        "todos": [t.to_dict() for t in todos],
+    }
+
+
 # ==================== 对话悬浮窗 API ====================
 
 @app.get("/api/overlay/status")
