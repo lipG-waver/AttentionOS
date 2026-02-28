@@ -360,6 +360,63 @@ def parse_natural_language_todo(text: str, use_llm: bool = True) -> Dict[str, An
     return parse_todo_local(text)
 
 
+# ============================================================
+# 批量/重复任务 — 日期序列生成
+# ============================================================
+
+def generate_monthly_dates(day_of_month: int, start: datetime, end: datetime) -> List[str]:
+    """
+    生成每月指定日期的日期列表。
+
+    Args:
+        day_of_month: 每月第几日 (1-31)
+        start: 开始日期（包含）
+        end: 结束日期（包含）
+
+    Returns:
+        YYYY-MM-DD 格式的日期字符串列表
+    """
+    import calendar
+    dates = []
+    year, month = start.year, start.month
+    while True:
+        last_day = calendar.monthrange(year, month)[1]
+        target_day = min(day_of_month, last_day)
+        target = datetime(year, month, target_day)
+
+        if target > end:
+            break
+        if target.date() >= start.date():
+            dates.append(target.strftime("%Y-%m-%d"))
+
+        if month == 12:
+            year, month = year + 1, 1
+        else:
+            month += 1
+    return dates
+
+
+def generate_weekly_dates(day_of_week: int, start: datetime, end: datetime) -> List[str]:
+    """
+    生成每周指定星期几的日期列表。
+
+    Args:
+        day_of_week: 星期几 (0=周一, 6=周日)
+        start: 开始日期（包含）
+        end: 结束日期（包含）
+
+    Returns:
+        YYYY-MM-DD 格式的日期字符串列表
+    """
+    dates = []
+    days_ahead = (day_of_week - start.weekday()) % 7
+    current = start + timedelta(days=days_ahead)
+    while current <= end:
+        dates.append(current.strftime("%Y-%m-%d"))
+        current += timedelta(weeks=1)
+    return dates
+
+
 @dataclass
 class TodoItem:
     """单条待办事项"""
@@ -507,6 +564,114 @@ class TodoManager:
             "parsed": parsed,
             "original_text": text,
         }
+
+    def bulk_add(self, title: str, dates: List[str], priority: str = "normal",
+                tags: Optional[List[str]] = None) -> List[TodoItem]:
+        """
+        批量添加多条待办事项（相同标题，不同日期）。
+
+        Args:
+            title: 任务标题
+            dates: YYYY-MM-DD 格式的日期列表
+            priority: 优先级
+            tags: 标签列表
+
+        Returns:
+            创建的 TodoItem 列表
+        """
+        todos = []
+        for date_str in dates:
+            todo = TodoItem(
+                id="",
+                title=title,
+                deadline=date_str,
+                priority=priority,
+                tags=list(tags) if tags else [],
+            )
+            self._todos.append(todo)
+            todos.append(todo)
+        if todos:
+            self._save()
+            logger.info(f"批量添加 {len(todos)} 条待办: {title}")
+        return todos
+
+    def search(self, keyword: str, include_completed: bool = True) -> List[Dict[str, Any]]:
+        """
+        按关键词搜索待办事项（匹配标题或标签）。
+
+        Args:
+            keyword: 搜索词（不区分大小写）
+            include_completed: 是否包含已完成的任务
+
+        Returns:
+            匹配的待办列表（保持 get_all 排序规则）
+        """
+        kw = keyword.strip().lower()
+        if not kw:
+            return self.get_all(include_completed=include_completed)
+
+        results = []
+        for t in self._todos:
+            if not include_completed and t.completed:
+                continue
+            if kw in t.title.lower() or any(kw in tag.lower() for tag in (t.tags or [])):
+                results.append(t)
+
+        priority_order = {"urgent": 0, "high": 1, "normal": 2, "low": 3}
+
+        def sort_key(t):
+            completed = 1 if t.completed else 0
+            pri = priority_order.get(t.priority, 2)
+            dl_dt = t._get_deadline_dt()
+            dl_score = (dl_dt - datetime.now()).total_seconds() / 86400 if dl_dt else 9999
+            return (completed, pri, dl_score)
+
+        return [t.to_dict() for t in sorted(results, key=sort_key)]
+
+    def get_due_today(self) -> List[Dict[str, Any]]:
+        """获取今日到期的未完成待办"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        results = [
+            t for t in self._todos
+            if not t.completed and t.deadline and t.deadline.startswith(today)
+        ]
+        return [t.to_dict() for t in results]
+
+    def get_overdue(self) -> List[Dict[str, Any]]:
+        """获取所有逾期的未完成待办"""
+        now = datetime.now()
+        results = [
+            t for t in self._todos
+            if not t.completed and t._get_deadline_dt() and now > t._get_deadline_dt()
+        ]
+        return [t.to_dict() for t in sorted(results, key=lambda t: t.deadline or "")]
+
+    def get_upcoming(self, days: int = 7) -> List[Dict[str, Any]]:
+        """获取未来 N 天内到期的未完成待办（不含已逾期）"""
+        now = datetime.now()
+        cutoff = now + timedelta(days=days)
+        results = [
+            t for t in self._todos
+            if not t.completed
+            and t._get_deadline_dt()
+            and now <= t._get_deadline_dt() <= cutoff
+        ]
+        return [t.to_dict() for t in sorted(results, key=lambda t: t.deadline or "")]
+
+    def clear_completed(self) -> int:
+        """
+        清空所有已完成的待办事项。
+
+        Returns:
+            删除的数量
+        """
+        before = len(self._todos)
+        self._todos = [t for t in self._todos if not t.completed]
+        deleted = before - len(self._todos)
+        if deleted > 0:
+            self._save()
+            logger.info(f"清空已完成待办: 删除 {deleted} 条")
+        return deleted
 
     def update(self, todo_id: str, **kwargs) -> Optional[TodoItem]:
         """更新待办事项"""

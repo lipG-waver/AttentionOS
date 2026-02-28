@@ -342,10 +342,47 @@ async def pomodoro_update_settings(request: Request):
 
 @app.get("/api/todos")
 @_safe_route
-async def get_todos():
+async def get_todos(request: Request):
+    """
+    获取待办事项列表，支持搜索和过滤。
+
+    Query params:
+      q:                关键词搜索（标题/标签）
+      due:              due=today | due=overdue | due=upcoming
+      days:             upcoming 时的天数窗口（默认7）
+      tag:              按标签过滤（精确匹配）
+      priority:         按优先级过滤（urgent/high/normal/low）
+      include_completed: 是否包含已完成（默认 true）
+    """
     from attention.features.todo_manager import get_todo_manager
     mgr = get_todo_manager()
-    return {"todos": mgr.get_all(), "stats": mgr.get_stats()}
+    params = dict(request.query_params)
+
+    q = params.get("q", "").strip()
+    due = params.get("due", "").strip().lower()
+    days = int(params.get("days", 7))
+    tag = params.get("tag", "").strip()
+    priority = params.get("priority", "").strip()
+    include_completed = params.get("include_completed", "true").lower() != "false"
+
+    if due == "today":
+        todos = mgr.get_due_today()
+    elif due == "overdue":
+        todos = mgr.get_overdue()
+    elif due == "upcoming":
+        todos = mgr.get_upcoming(days=days)
+    elif q:
+        todos = mgr.search(q, include_completed=include_completed)
+    else:
+        todos = mgr.get_all(include_completed=include_completed)
+
+    # 在结果中二次过滤 tag / priority
+    if tag:
+        todos = [t for t in todos if tag in (t.get("tags") or [])]
+    if priority:
+        todos = [t for t in todos if t.get("priority") == priority]
+
+    return {"todos": todos, "stats": mgr.get_stats()}
 
 
 @app.post("/api/todos")
@@ -378,10 +415,39 @@ async def toggle_todo(todo_id: str):
     return {"success": False, "error": "未找到该待办事项"}
 
 
+@app.delete("/api/todos/completed")
+async def clear_completed_todos():
+    """清空所有已完成的待办事项"""
+    from attention.features.todo_manager import get_todo_manager
+    deleted = get_todo_manager().clear_completed()
+    return {"success": True, "deleted": deleted}
+
+
 @app.delete("/api/todos/{todo_id}")
 async def delete_todo(todo_id: str):
     from attention.features.todo_manager import get_todo_manager
     return {"success": get_todo_manager().delete(todo_id)}
+
+
+@app.get("/api/todos/search")
+@_safe_route
+async def search_todos(request: Request):
+    """
+    按关键词搜索待办事项（GET /api/todos?q= 的语义别名）。
+
+    Query params:
+      q:                 搜索关键词（必填）
+      include_completed: 是否包含已完成（默认 false）
+    """
+    from attention.features.todo_manager import get_todo_manager
+    params = dict(request.query_params)
+    q = params.get("q", "").strip()
+    if not q:
+        return {"success": False, "error": "请提供搜索关键词 q"}
+    include_completed = params.get("include_completed", "false").lower() != "false"
+    mgr = get_todo_manager()
+    todos = mgr.search(q, include_completed=include_completed)
+    return {"success": True, "todos": todos, "count": len(todos), "keyword": q}
 
 
 @app.post("/api/todos/smart-add")
@@ -415,6 +481,78 @@ async def parse_todo_text(request: Request):
     use_llm = body.get("use_llm", True)
     parsed = parse_natural_language_todo(text, use_llm=use_llm)
     return {"success": True, "parsed": parsed}
+
+
+@app.post("/api/todos/bulk-add")
+@_safe_route
+async def bulk_add_todos(request: Request):
+    """
+    批量添加多条待办（相同标题，不同日期）。
+
+    Body:
+      title: str          — 任务标题
+      dates: List[str]    — YYYY-MM-DD 格式的日期列表
+      priority: str       — 优先级（可选，默认 normal）
+      tags: List[str]     — 标签（可选）
+
+    或使用 recurrence 模式自动生成日期：
+      recurrence: "monthly" | "weekly"
+      day_of_month: int   — 每月第几日（monthly 时必填）
+      day_of_week: int    — 星期几 0=周一（weekly 时必填）
+      start_date: str     — 开始日期 YYYY-MM-DD（可选，默认今天）
+      end_date: str       — 结束日期 YYYY-MM-DD（必填）
+    """
+    from datetime import datetime
+    from attention.features.todo_manager import (
+        get_todo_manager, generate_monthly_dates, generate_weekly_dates
+    )
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    title = body.get("title", "").strip()
+    if not title:
+        return {"success": False, "error": "标题不能为空"}
+
+    priority = body.get("priority", "normal")
+    tags = body.get("tags") or []
+
+    dates = body.get("dates")
+    recurrence = body.get("recurrence")
+
+    if not dates and recurrence:
+        end_date_str = body.get("end_date", "")
+        start_date_str = body.get("start_date", datetime.now().strftime("%Y-%m-%d"))
+        try:
+            start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
+            end_dt = datetime.strptime(end_date_str, "%Y-%m-%d")
+        except ValueError:
+            return {"success": False, "error": "日期格式应为 YYYY-MM-DD"}
+
+        if recurrence == "monthly":
+            day_of_month = body.get("day_of_month")
+            if not day_of_month:
+                return {"success": False, "error": "monthly 模式需要 day_of_month"}
+            dates = generate_monthly_dates(int(day_of_month), start_dt, end_dt)
+        elif recurrence == "weekly":
+            day_of_week = body.get("day_of_week")
+            if day_of_week is None:
+                return {"success": False, "error": "weekly 模式需要 day_of_week (0=周一)"}
+            dates = generate_weekly_dates(int(day_of_week), start_dt, end_dt)
+        else:
+            return {"success": False, "error": f"不支持的 recurrence 类型: {recurrence}"}
+
+    if not dates:
+        return {"success": False, "error": "日期列表不能为空，请提供 dates 或 recurrence 参数"}
+
+    mgr = get_todo_manager()
+    todos = mgr.bulk_add(title, dates, priority=priority, tags=tags)
+    return {
+        "success": True,
+        "count": len(todos),
+        "todos": [t.to_dict() for t in todos],
+    }
 
 
 # ==================== 对话悬浮窗 API ====================

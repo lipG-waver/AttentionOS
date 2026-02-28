@@ -117,6 +117,7 @@ class DialogueAgent:
         self._context = SessionContext()
         self._lock = threading.Lock()
         self._pending_thoughts: List[str] = []  # 待整理的快速想法
+        self._pending_bulk_import: Optional[Dict[str, Any]] = None  # 等待结束日期确认的批量导入
 
     # ---- 上下文管理 ----
 
@@ -145,6 +146,12 @@ class DialogueAgent:
 
         ctx = self.get_context()
 
+        # 优先处理待确认的批量导入（等待用户提供结束日期）
+        if self._pending_bulk_import is not None:
+            bulk_response = self._handle_pending_bulk_import(text)
+            if bulk_response is not None:
+                return bulk_response
+
         # 专注模式下的思维捕捉
         if ctx.is_focus_mode and len(text) < 100 and not text.startswith("/"):
             return self._handle_thought_capture(text, ctx)
@@ -152,6 +159,16 @@ class DialogueAgent:
         # 命令处理
         if text.startswith("/"):
             return self._handle_command(text, ctx)
+
+        # 检测批量/重复任务导入意图
+        bulk_response = self._detect_bulk_import_intent(text)
+        if bulk_response is not None:
+            return bulk_response
+
+        # 检测待办查询/管理意图（查看、搜索、清空）
+        query_response = self._detect_todo_query_intent(text)
+        if query_response is not None:
+            return query_response
 
         # 检测待办创建意图
         todo_response = self._detect_todo_intent(text)
@@ -286,6 +303,119 @@ class DialogueAgent:
         self._add_message("assistant", confirm, msg_type="thought_capture")
         return confirm
 
+    def _detect_todo_query_intent(self, text: str) -> Optional[str]:
+        """
+        检测待办的查询/管理意图：
+          - 查看今日待办 / 逾期任务 / 即将到期 / 所有任务
+          - 搜索关键词
+          - 清空已完成
+        返回格式化后的消息，或 None（未命中）。
+        """
+        import re
+
+        t = text.strip()
+
+        # ---- 清空已完成 ----
+        if re.search(r"清[空除掉]?(?:所有)?已完成|清[空除]已完成|删除已完成|清掉已完成|清完成", t):
+            try:
+                from attention.features.todo_manager import get_todo_manager
+                n = get_todo_manager().clear_completed()
+                msg = f"🗑️ 已清空 {n} 条完成的待办 ✨" if n else "没有已完成的待办需要清空 👌"
+                self._add_message("user", t)
+                self._add_message("assistant", msg)
+                return msg
+            except Exception as e:
+                logger.warning(f"清空已完成失败: {e}")
+                return None
+
+        # ---- 搜索关键词 ----
+        m = re.search(r"(?:搜索|查找|找[一找]?找?|找下)(?:待办|任务)?[「\s:：]*([\w\u4e00-\u9fa5]+)", t)
+        if m:
+            keyword = m.group(1).strip()
+            try:
+                from attention.features.todo_manager import get_todo_manager
+                results = get_todo_manager().search(keyword, include_completed=False)
+                msg = self._format_todo_list(results, f"搜索「{keyword}」")
+                self._add_message("user", t)
+                self._add_message("assistant", msg)
+                return msg
+            except Exception as e:
+                logger.warning(f"搜索待办失败: {e}")
+                return None
+
+        # ---- 查看今日待办 ----
+        if re.search(r"今[天日].*?(?:待办|任务|要做|该做|安排)|(?:待办|任务).*?今[天日]|今[天日]有[什哪]", t):
+            try:
+                from attention.features.todo_manager import get_todo_manager
+                results = get_todo_manager().get_due_today()
+                msg = self._format_todo_list(results, "今日待办")
+                self._add_message("user", t)
+                self._add_message("assistant", msg)
+                return msg
+            except Exception as e:
+                logger.warning(f"获取今日待办失败: {e}")
+                return None
+
+        # ---- 查看逾期任务 ----
+        if re.search(r"逾期|过期|超期|过了.*?截止|没完成.*?(?:任务|待办)", t):
+            try:
+                from attention.features.todo_manager import get_todo_manager
+                results = get_todo_manager().get_overdue()
+                msg = self._format_todo_list(results, "逾期待办")
+                self._add_message("user", t)
+                self._add_message("assistant", msg)
+                return msg
+            except Exception as e:
+                logger.warning(f"获取逾期待办失败: {e}")
+                return None
+
+        # ---- 查看即将到期（本周/未来7天）----
+        if re.search(r"(?:本|这|即将|快要|最近).*?(?:到期|截止|待办|任务)|(?:待办|任务).*?(?:本|这)周|近期.*?(?:待办|任务)", t):
+            try:
+                from attention.features.todo_manager import get_todo_manager
+                results = get_todo_manager().get_upcoming(days=7)
+                msg = self._format_todo_list(results, "近7天待办")
+                self._add_message("user", t)
+                self._add_message("assistant", msg)
+                return msg
+            except Exception as e:
+                logger.warning(f"获取近期待办失败: {e}")
+                return None
+
+        # ---- 查看所有待办 ----
+        if re.search(r"(?:查看|看看|列出|显示|show).*?(?:所有|全部|全[部]?|所有的)?(?:待办|任务|todo)|(?:所有|全部).*?(?:待办|任务)", t):
+            try:
+                from attention.features.todo_manager import get_todo_manager
+                mgr = get_todo_manager()
+                results = mgr.get_all(include_completed=False)
+                stats = mgr.get_stats()
+                msg = self._format_todo_list(results, f"全部待办（{stats['pending']} 条未完成）")
+                self._add_message("user", t)
+                self._add_message("assistant", msg)
+                return msg
+            except Exception as e:
+                logger.warning(f"获取所有待办失败: {e}")
+                return None
+
+        return None
+
+    def _format_todo_list(self, todos: List[Dict], title: str) -> str:
+        """将待办列表格式化为对话气泡友好的字符串"""
+        if not todos:
+            return f"📋 {title}：暂时没有任务 🎉"
+
+        lines = [f"📋 {title}（{len(todos)} 条）："]
+        priority_icons = {"urgent": "🔴", "high": "🟠", "normal": "🟡", "low": "🔵"}
+        for t in todos[:10]:  # 最多显示10条
+            icon = priority_icons.get(t.get("priority", "normal"), "🟡")
+            title_text = t.get("title", "")
+            deadline = t.get("deadline", "")
+            dl_str = f" · {deadline}" if deadline else ""
+            lines.append(f"  {icon} {title_text}{dl_str}")
+        if len(todos) > 10:
+            lines.append(f"  … 还有 {len(todos) - 10} 条，详情见 Web 界面")
+        return "\n".join(lines)
+
     def _detect_todo_intent(self, text: str) -> Optional[str]:
         """
         检测自然语言中的待办创建意图，并实际调用 todo_manager 创建任务。
@@ -337,6 +467,273 @@ class DialogueAgent:
         except Exception as e:
             logger.warning(f"待办创建失败: {e}")
             return None
+
+    # ---- 批量/重复任务导入 ----
+
+    _CHINESE_MONTH_MAP = {
+        "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6,
+        "七": 7, "八": 8, "九": 9, "十": 10, "十一": 11, "十二": 12,
+    }
+    _WEEKDAY_MAP = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6, "天": 6}
+    _WEEKDAY_NAMES = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+
+    def _detect_bulk_import_intent(self, text: str) -> Optional[str]:
+        """
+        检测批量/重复任务导入意图，如"每个月26日去配药"。
+        若检测到重复模式：
+          - 若同时包含结束日期 → 直接批量创建并返回确认
+          - 若缺少结束日期 → 询问结束时间，保存 _pending_bulk_import
+        """
+        import re
+
+        monthly = re.search(r"每(?:个)?月(?:的?)?(\d{1,2})\s*[号日]", text)
+        weekly = re.search(r"每(?:个)?周([一二三四五六日天])", text)
+
+        if not monthly and not weekly:
+            return None
+
+        now = datetime.now()
+        title = self._extract_bulk_title(text)
+        priority = self._infer_priority(text)
+        tags = self._infer_tags(text)
+        end_date = self._parse_end_date(text, now)
+
+        if monthly:
+            day_of_month = int(monthly.group(1))
+            if end_date:
+                response = self._create_bulk_monthly(title, day_of_month, now, end_date, priority, tags)
+                self._add_message("user", text)
+                self._add_message("assistant", response)
+                return response
+            else:
+                self._pending_bulk_import = {
+                    "type": "monthly",
+                    "day_of_month": day_of_month,
+                    "title": title,
+                    "priority": priority,
+                    "tags": tags,
+                }
+                question = (f'好的！「{title}」每月{day_of_month}日，'
+                            f'你想加到什么时候呢？（比如「到8月」、「到2026年底」、「接下来3个月」）')
+                self._add_message("user", text)
+                self._add_message("assistant", question)
+                return question
+
+        if weekly:
+            day_of_week = self._WEEKDAY_MAP[weekly.group(1)]
+            weekday_name = self._WEEKDAY_NAMES[day_of_week]
+            if end_date:
+                response = self._create_bulk_weekly(title, day_of_week, now, end_date, priority, tags)
+                self._add_message("user", text)
+                self._add_message("assistant", response)
+                return response
+            else:
+                self._pending_bulk_import = {
+                    "type": "weekly",
+                    "day_of_week": day_of_week,
+                    "title": title,
+                    "priority": priority,
+                    "tags": tags,
+                }
+                question = (f'好的！「{title}」每{weekday_name}，'
+                            f'你想加到什么时候呢？（比如「到8月」、「到2026年底」、「接下来3个月」）')
+                self._add_message("user", text)
+                self._add_message("assistant", question)
+                return question
+
+        return None
+
+    def _handle_pending_bulk_import(self, text: str) -> Optional[str]:
+        """
+        处理待确认批量导入的结束日期回复。
+        Returns:
+          - 确认/取消/重询消息（字符串）: 已处理，勿继续路由
+          - None: 无法解析为结束日期，让后续逻辑正常处理
+        """
+        import re
+
+        pending = self._pending_bulk_import
+        if pending is None:
+            return None
+
+        # 取消词
+        if re.search(r"算了|取消|不了|不用|不要|停止|放弃", text):
+            self._pending_bulk_import = None
+            msg = "好的，批量添加已取消 ✌️"
+            self._add_message("user", text)
+            self._add_message("assistant", msg)
+            return msg
+
+        now = datetime.now()
+        end_date = self._parse_end_date(text, now)
+
+        if end_date is None:
+            # 若看起来是在尝试描述结束时间，但解析失败，提示重试
+            if re.search(r"月|年|到|底|末|号|天|周|久", text):
+                retry = '我没明白截止时间，可以说「到8月」或者「接下来3个月」？（输入「取消」可以放弃）'
+                self._add_message("user", text)
+                self._add_message("assistant", retry)
+                return retry
+            # 否则与批量导入无关，放回正常路由
+            return None
+
+        title = pending["title"]
+        priority = pending.get("priority", "normal")
+        tags = pending.get("tags", [])
+
+        if pending["type"] == "monthly":
+            response = self._create_bulk_monthly(title, pending["day_of_month"], now, end_date, priority, tags)
+        elif pending["type"] == "weekly":
+            response = self._create_bulk_weekly(title, pending["day_of_week"], now, end_date, priority, tags)
+        else:
+            response = "暂不支持该重复类型 🤔"
+
+        self._pending_bulk_import = None
+        self._add_message("user", text)
+        self._add_message("assistant", response)
+        return response
+
+    def _parse_end_date(self, text: str, now: datetime) -> Optional[datetime]:
+        """
+        从文本中解析批量任务的结束日期。
+        支持：到X月、到YYYY年X月、到年底、接下来N个月、明年X月等。
+        """
+        import re
+        import calendar
+
+        month_pat = r"(?:\d{1,2}|[一二三四五六七八九十]{1,3})"
+
+        # "到YYYY年X月（底/末）"
+        m = re.search(rf"到(\d{{4}})年({month_pat})月(?:底|末)?", text)
+        if m:
+            year, month = int(m.group(1)), self._to_month_int(m.group(2))
+            if month:
+                last = calendar.monthrange(year, month)[1]
+                return datetime(year, month, last)
+
+        # "到X月（底/末）"
+        m = re.search(rf"到({month_pat})月(?:底|末)?", text)
+        if m:
+            month = self._to_month_int(m.group(1))
+            if month:
+                year = now.year
+                if month < now.month or (month == now.month and now.day > 20):
+                    year += 1
+                last = calendar.monthrange(year, month)[1]
+                return datetime(year, month, last)
+
+        # "到年底" / "到年末"
+        if re.search(r"到年底|到年末", text):
+            return datetime(now.year, 12, 31)
+
+        # "到明年X月"
+        m = re.search(rf"到明年({month_pat})月(?:底|末)?", text)
+        if m:
+            month = self._to_month_int(m.group(1))
+            if month:
+                last = calendar.monthrange(now.year + 1, month)[1]
+                return datetime(now.year + 1, month, last)
+
+        # "接下来N个月" / "未来N个月"
+        m = re.search(r"(?:接下来|未来)(\d+|[一二三四五六七八九十]+)(?:个)?月", text)
+        if m:
+            n = self._to_month_int(m.group(1))
+            if n:
+                end_m = now.month + n
+                end_y = now.year
+                while end_m > 12:
+                    end_m -= 12
+                    end_y += 1
+                last = calendar.monthrange(end_y, end_m)[1]
+                return datetime(end_y, end_m, last)
+
+        # "接下来几个月" → 默认6个月
+        if re.search(r"接下来几个月|未来几个月", text):
+            end_m = now.month + 6
+            end_y = now.year
+            while end_m > 12:
+                end_m -= 12
+                end_y += 1
+            last = calendar.monthrange(end_y, end_m)[1]
+            return datetime(end_y, end_m, last)
+
+        return None
+
+    def _to_month_int(self, s: str) -> Optional[int]:
+        """将中文或阿拉伯月份字符串转为整数"""
+        try:
+            n = int(s)
+            if 1 <= n <= 12:
+                return n
+        except ValueError:
+            pass
+        return self._CHINESE_MONTH_MAP.get(s)
+
+    def _extract_bulk_title(self, text: str) -> str:
+        """从批量任务描述中提取任务标题（去掉重复频率、时间范围等修饰词）"""
+        import re
+        s = text
+        s = re.sub(r"每(?:个)?月(?:的?)?(?:\d{1,2})\s*[号日]?", "", s)
+        s = re.sub(r"每(?:个)?周[一二三四五六日天]?", "", s)
+        s = re.sub(r"每天", "", s)
+        s = re.sub(r"(?:接下来|未来)(?:的?)?(?:\d+|几|[一二三四五六七八九十]+)?(?:个)?月", "", s)
+        s = re.sub(r"到(?:\d{4}年)?(?:年底|年末|[一二三四五六七八九十]+|\d{1,2})月?(?:底|末)?", "", s)
+        s = re.sub(r"到明年\d{1,2}月", "", s)
+        s = re.sub(r"都要?|需要|应该", "", s)
+        s = re.sub(r"[，,。！？\s]+", " ", s).strip()
+        return s if len(s) >= 2 else text.strip()
+
+    def _infer_priority(self, text: str) -> str:
+        from attention.features.todo_manager import _infer_priority_from_text
+        return _infer_priority_from_text(text)
+
+    def _infer_tags(self, text: str) -> List[str]:
+        from attention.features.todo_manager import _infer_tags_from_text
+        return _infer_tags_from_text(text)
+
+    def _create_bulk_monthly(self, title: str, day_of_month: int,
+                              start: datetime, end: datetime,
+                              priority: str = "normal",
+                              tags: Optional[List[str]] = None) -> str:
+        """批量创建每月重复任务，返回确认消息"""
+        from attention.features.todo_manager import get_todo_manager, generate_monthly_dates
+        dates = generate_monthly_dates(day_of_month, start, end)
+        if not dates:
+            return f"在这个时间范围内找不到每月{day_of_month}日的有效日期，请确认一下 🤔"
+        mgr = get_todo_manager()
+        todos = mgr.bulk_add(title, dates, priority=priority, tags=tags or [])
+        summary = self._format_date_summary(dates)
+        return (f"✅ 已批量添加 {len(todos)} 条「{title}」待办\n"
+                f"📅 {summary}，每月{day_of_month}日一次")
+
+    def _create_bulk_weekly(self, title: str, day_of_week: int,
+                             start: datetime, end: datetime,
+                             priority: str = "normal",
+                             tags: Optional[List[str]] = None) -> str:
+        """批量创建每周重复任务，返回确认消息"""
+        from attention.features.todo_manager import get_todo_manager, generate_weekly_dates
+        dates = generate_weekly_dates(day_of_week, start, end)
+        if not dates:
+            return "在这个时间范围内找不到有效日期，请确认一下 🤔"
+        mgr = get_todo_manager()
+        todos = mgr.bulk_add(title, dates, priority=priority, tags=tags or [])
+        weekday_name = self._WEEKDAY_NAMES[day_of_week]
+        summary = self._format_date_summary(dates)
+        return (f"✅ 已批量添加 {len(todos)} 条「{title}」待办\n"
+                f"📅 {summary}，每{weekday_name}一次")
+
+    def _format_date_summary(self, dates: List[str]) -> str:
+        """将日期列表格式化为简洁的中文摘要"""
+        if not dates:
+            return ""
+
+        def fmt(d: str) -> str:
+            parts = d.split("-")
+            return f"{int(parts[1])}月{int(parts[2])}日"
+
+        if len(dates) <= 4:
+            return "、".join(fmt(d) for d in dates)
+        return f"{fmt(dates[0])} 至 {fmt(dates[-1])}（共{len(dates)}次）"
 
     def _handle_command(self, text: str, ctx: SessionContext) -> str:
         """处理斜杠命令"""
