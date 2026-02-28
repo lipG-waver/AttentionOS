@@ -46,6 +46,7 @@ class ActivityState:
     # 活动统计
     keyboard_events: int = 0       # 检测到键盘活动的快照数
     mouse_events: int = 0          # 检测到鼠标活动的快照数
+    active_snapshots: int = 0      # 键盘或鼠标至少有一个活跃的快照数
     total_snapshots: int = 0       # 总快照数
     
     # 窗口信息
@@ -56,11 +57,10 @@ class ActivityState:
     # 计算属性
     @property
     def activity_ratio(self) -> float:
-        """活动比例：有输入的快照占总快照的比例"""
+        """活动比例：键盘或鼠标至少有一个活跃的快照占总快照的比例"""
         if self.total_snapshots == 0:
             return 0.0
-        active = max(self.keyboard_events, self.mouse_events)
-        return active / self.total_snapshots
+        return self.active_snapshots / self.total_snapshots
     
     @property
     def is_active(self) -> bool:
@@ -91,6 +91,7 @@ class ActivityState:
             "period_end": self.period_end.strftime("%Y-%m-%d %H:%M:%S"),
             "keyboard_events": self.keyboard_events,
             "mouse_events": self.mouse_events,
+            "active_snapshots": self.active_snapshots,
             "total_snapshots": self.total_snapshots,
             "activity_ratio": round(self.activity_ratio, 2),
             "engagement_level": self.engagement_level,
@@ -544,6 +545,7 @@ class ActivityMonitor:
         # 统计
         keyboard_events = sum(1 for s in recent if s.keyboard_active)
         mouse_events = sum(1 for s in recent if s.mouse_active)
+        active_snapshots = sum(1 for s in recent if s.keyboard_active or s.mouse_active)
         
         # 窗口切换统计
         window_switches = 0
@@ -567,6 +569,7 @@ class ActivityMonitor:
             period_end=recent[-1].timestamp,
             keyboard_events=keyboard_events,
             mouse_events=mouse_events,
+            active_snapshots=active_snapshots,
             total_snapshots=len(recent),
             primary_window_title=primary_title,
             primary_window_app=primary_app,

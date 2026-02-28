@@ -318,8 +318,13 @@ class StateFusion:
             fused.attention_level = AttentionLevel.DRIFTING.value
         elif not productive_app:
             fused.attention_level = AttentionLevel.DISTRACTED.value
-        else:
+        elif fused.activity_ratio > self.low_activity_threshold:
+            # productive_app + 0.1 < ratio <= 0.2，有轻度活动（如缓慢阅读文档）
             fused.attention_level = AttentionLevel.ENGAGED.value
+        else:
+            # productive_app + ratio <= 0.1，活动率极低，即使在工作应用也视为游离
+            # 避免"几乎不动但窗口停在 VSCode"被误判为在工作
+            fused.attention_level = AttentionLevel.DRIFTING.value
         
         return fused
     
