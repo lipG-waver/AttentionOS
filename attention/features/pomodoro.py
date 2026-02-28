@@ -244,18 +244,6 @@ class PomodoroTimer:
                 f"(共{self.settings.cycles_before_long}个为一组){task_info}"
             )
 
-            # 触发事件
-            try:
-                from attention.core.event_bus import get_event_bus
-                get_event_bus().emit("pomodoro.started", {
-                    "focus_task": self._focus_task,
-                    "task_source": self._focus_task_source,
-                    "cycle": self._current_cycle,
-                    "work_minutes": self.settings.work_minutes,
-                })
-            except Exception:
-                pass
-            
             # 通知对话悬浮窗
             try:
                 from attention.ui.chat_overlay import get_chat_overlay
@@ -401,18 +389,6 @@ class PomodoroTimer:
                 self._save_focus_sessions()
             
             logger.info("工作阶段结束")
-
-            # 触发事件
-            try:
-                from attention.core.event_bus import get_event_bus
-                get_event_bus().emit("pomodoro.completed", {
-                    "focus_task": self._focus_task,
-                    "task_source": self._focus_task_source,
-                    "duration_minutes": self.settings.work_minutes,
-                    "cycle": self._current_cycle,
-                })
-            except Exception:
-                pass
 
             # 通知对话悬浮窗
             try:

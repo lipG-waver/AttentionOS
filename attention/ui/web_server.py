@@ -38,7 +38,6 @@ app.add_middleware(
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """全局异常处理器 — 捕获所有未处理异常，返回友好 JSON"""
     logger.error(f"API错误 [{request.method} {request.url.path}]: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
@@ -53,7 +52,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc):
-    """404 处理器"""
     return JSONResponse(
         status_code=404,
         content={
@@ -66,7 +64,6 @@ async def not_found_handler(request: Request, exc):
 
 @app.exception_handler(422)
 async def validation_error_handler(request: Request, exc):
-    """422 验证错误处理器"""
     return JSONResponse(
         status_code=422,
         content={
@@ -78,7 +75,6 @@ async def validation_error_handler(request: Request, exc):
 
 
 def _safe_route(func):
-    """路由装饰器 — 为每个路由添加 try/except"""
     import functools
 
     @functools.wraps(func)
@@ -125,18 +121,7 @@ manager = ConnectionManager()
 
 # ==================== 辅助函数 ====================
 
-def _safe_get_recovery_state() -> Optional[Dict]:
-    """安全获取恢复提醒状态"""
-    try:
-        from attention.features.recovery_reminder import get_recovery_reminder
-        reminder = get_recovery_reminder()
-        return reminder.get_state()
-    except Exception:
-        return None
-
-
 def _safe_get_pomodoro_status() -> Optional[Dict]:
-    """安全获取番茄钟状态"""
     try:
         from attention.features.pomodoro import get_pomodoro
         return get_pomodoro().get_status()
@@ -145,7 +130,6 @@ def _safe_get_pomodoro_status() -> Optional[Dict]:
 
 
 def _parse_bool(value: str) -> bool:
-    """解析字符串为布尔值"""
     return value.lower() in ("true", "1", "yes")
 
 
@@ -153,7 +137,6 @@ def _parse_bool(value: str) -> bool:
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """返回主页面"""
     html_path = Config.BASE_DIR / "static" / "index.html"
     if html_path.exists():
         return FileResponse(html_path)
@@ -163,15 +146,13 @@ async def root():
 @app.get("/api/status")
 @_safe_route
 async def get_current_status():
-    """获取当前实时状态（包含 recovery 和 pomodoro）"""
+    """获取当前实时状态"""
     db = get_database()
     monitor = get_activity_monitor()
 
-    # 最新记录
     records = db.get_records(limit=1)
     latest = records[-1] if records else None
 
-    # 活动状态
     activity = None
     idle_duration = 0
     if monitor._running:
@@ -179,7 +160,6 @@ async def get_current_status():
         idle_duration = monitor.get_idle_duration()
         activity = activity_state.to_dict()
 
-    # 今日统计
     today_records = db.get_today_records()
     stats = db.get_statistics(today_records)
 
@@ -190,7 +170,6 @@ async def get_current_status():
         "idle_duration": idle_duration,
         "today_stats": stats,
         "monitor_running": monitor._running,
-        "recovery": _safe_get_recovery_state(),
         "pomodoro": _safe_get_pomodoro_status(),
     }
 
@@ -298,7 +277,6 @@ async def pomodoro_start(request: Request):
     from attention.features.pomodoro import get_pomodoro
     p = get_pomodoro()
     params = dict(request.query_params)
-    # 支持通过 body 或 query 传递专注任务
     focus_task = params.get("focus_task")
     task_source = params.get("task_source")
     if not focus_task:
@@ -306,7 +284,7 @@ async def pomodoro_start(request: Request):
             body = await request.json()
             focus_task = body.get("focus_task")
             task_source = body.get("task_source")
-        except:
+        except Exception:
             pass
     p.start_work(focus_task=focus_task, task_source=task_source)
     return {"success": True, "status": p.get_status()}
@@ -409,7 +387,6 @@ async def delete_todo(todo_id: str):
 @app.post("/api/todos/smart-add")
 @_safe_route
 async def smart_add_todo(request: Request):
-    """智能添加：接受自然语言输入，LLM 解析后创建任务"""
     from attention.features.todo_manager import get_todo_manager
     mgr = get_todo_manager()
     try:
@@ -427,7 +404,6 @@ async def smart_add_todo(request: Request):
 @app.post("/api/todos/parse")
 @_safe_route
 async def parse_todo_text(request: Request):
-    """仅解析自然语言，不创建任务（预览用）"""
     from attention.features.todo_manager import parse_natural_language_todo
     try:
         body = await request.json()
@@ -441,200 +417,7 @@ async def parse_todo_text(request: Request):
     return {"success": True, "parsed": parsed}
 
 
-# ==================== 每日 Briefing API ====================
-
-@app.get("/api/briefing")
-@_safe_route
-async def get_briefing():
-    """获取今日 briefing 数据（包含 deadline 任务、目标等）"""
-    from attention.features.daily_briefing import get_daily_briefing
-    return get_daily_briefing().get_briefing_data()
-
-
-@app.post("/api/briefing/goals")
-@_safe_route
-async def set_briefing_goals(request: Request):
-    """提交今日目标，完成 briefing"""
-    from attention.features.daily_briefing import get_daily_briefing
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    goals = body.get("goals", [])
-    if not goals or not any(g.strip() for g in goals):
-        return {"success": False, "error": "请至少输入一个今日目标"}
-    return {"success": True, **get_daily_briefing().set_goals(goals)}
-
-
-@app.post("/api/briefing/dismiss")
-@_safe_route
-async def dismiss_briefing():
-    """跳过今日 briefing"""
-    from attention.features.daily_briefing import get_daily_briefing
-    return {"success": True, **get_daily_briefing().dismiss_briefing()}
-
-
-@app.post("/api/briefing/goals/add")
-@_safe_route
-async def add_briefing_goal(request: Request):
-    """追加一个目标"""
-    from attention.features.daily_briefing import get_daily_briefing
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    text = body.get("text", "").strip()
-    if not text:
-        return {"success": False, "error": "目标不能为空"}
-    return {"success": True, **get_daily_briefing().add_goal(text)}
-
-
-@app.post("/api/briefing/goals/{index}/toggle")
-@_safe_route
-async def toggle_briefing_goal(index: int):
-    """切换目标完成状态"""
-    from attention.features.daily_briefing import get_daily_briefing
-    return {"success": True, **get_daily_briefing().toggle_goal(index)}
-
-
-@app.post("/api/briefing/goals/{index}/remove")
-@_safe_route
-async def remove_briefing_goal(index: int):
-    """删除一个目标"""
-    from attention.features.daily_briefing import get_daily_briefing
-    return {"success": True, **get_daily_briefing().remove_goal(index)}
-
-
-@app.get("/api/briefing/nudge-status")
-@_safe_route
-async def get_nudge_status():
-    """获取任务感知提醒状态"""
-    from attention.features.daily_briefing import get_daily_briefing
-    return get_daily_briefing().get_nudge_summary()
-
-
-@app.get("/api/briefing/evening-review")
-@_safe_route
-async def get_evening_review():
-    """生成并获取一日回顾（对照早间目标 vs 实际行为）"""
-    from attention.features.daily_briefing import get_daily_briefing
-    return get_daily_briefing().generate_evening_review()
-
-
-# ==================== 语音识别 API（SenseVoice） ====================
-
-@app.post("/api/speech/transcribe")
-async def speech_transcribe(request: Request):
-    """
-    语音识别端点 — 基于 ModelScope SenseVoice 模型。
-    接收音频文件，返回识别文本 + 情感标签。
-
-    Request: multipart/form-data, field name = "audio"
-    Response: {"text": "...", "emotion": "neutral", "language": "zh", "success": true}
-    """
-    try:
-        form = await request.form()
-        audio_file = form.get("audio")
-        if not audio_file:
-            return JSONResponse(
-                status_code=400,
-                content={"success": False, "error": "请上传音频文件（字段名: audio）"}
-            )
-
-        audio_bytes = await audio_file.read()
-        filename = getattr(audio_file, "filename", "audio.wav")
-        suffix = "." + filename.rsplit(".", 1)[-1] if "." in filename else ".wav"
-
-        from attention.core.speech_recognition import get_speech_recognizer
-        recognizer = get_speech_recognizer()
-
-        if not recognizer.is_available:
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "success": False,
-                    "error": "SenseVoice 模型未加载，请安装: pip install funasr modelscope torch torchaudio",
-                }
-            )
-
-        result = recognizer.transcribe_bytes(audio_bytes, suffix=suffix)
-        return result
-
-    except Exception as e:
-        logger.error(f"语音识别 API 错误: {e}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "error": str(e)}
-        )
-
-
-@app.get("/api/speech/status")
-@_safe_route
-async def speech_status():
-    """检查 SenseVoice 语音识别是否可用"""
-    from attention.core.speech_recognition import get_speech_recognizer
-    recognizer = get_speech_recognizer()
-    return {
-        "available": recognizer.is_available,
-        "model": "iic/SenseVoiceSmall",
-        "features": ["transcription", "emotion_detection", "language_detection"],
-    }
-
-
-# ==================== 周数据洞察 API ====================
-
-@app.get("/api/weekly-insight")
-@_safe_route
-async def get_weekly_insight():
-    """生成过去 7 天的效率洞察"""
-    from attention.features.weekly_insight import generate_weekly_insight
-    return generate_weekly_insight()
-
-
-# ==================== 每日开工时间API ====================
-
-@app.get("/api/work-start/today")
-@_safe_route
-async def get_work_start_today():
-    """获取今天的开工时间"""
-    from attention.features.work_start_tracker import get_work_start_tracker
-    tracker = get_work_start_tracker()
-    return tracker.get_today()
-
-@app.get("/api/work-start/history")
-@_safe_route
-async def get_work_start_history():
-    """获取历史开工时间（最近30天）"""
-    from attention.features.work_start_tracker import get_work_start_tracker
-    tracker = get_work_start_tracker()
-    return {"history": tracker.get_history(days=30)}
-
-
-# ==================== 每日报告API ====================
-
-@app.get("/api/report/yesterday")
-@_safe_route
-async def get_yesterday_report():
-    from attention.features.daily_report import check_and_generate_yesterday_report
-    report = check_and_generate_yesterday_report()
-    return report if report else {"has_data": False, "message": "暂无昨日报告"}
-
-
-@app.get("/api/report/latest")
-async def get_latest_report():
-    from attention.features.daily_report import get_latest_report
-    report = get_latest_report()
-    return report if report else {"has_data": False, "message": "暂无报告"}
-
-
-@app.post("/api/report/generate")
-async def generate_report():
-    from attention.features.daily_report import generate_daily_report
-    report = generate_daily_report(datetime.now())
-    return report if report else {"has_data": False, "message": "没有足够数据"}
-
-
-# ==================== 对话悬浮窗 API（替代原桌面悬浮窗）====================
+# ==================== 对话悬浮窗 API ====================
 
 @app.get("/api/overlay/status")
 @_safe_route
@@ -764,7 +547,7 @@ async def update_checkin_settings(request: Request):
     from attention.features.hourly_checkin import get_hourly_checkin
     checkin = get_hourly_checkin()
     kwargs = {}
-    for int_key in ("interval_minutes", "start_hour", "end_hour", "evening_summary_hour"):
+    for int_key in ("interval_minutes", "start_hour", "end_hour"):
         if int_key in params:
             kwargs[int_key] = int(params[int_key])
     for bool_key in ("enabled", "sound_enabled"):
@@ -791,49 +574,15 @@ async def toggle_checkin(request: Request):
     return {"success": True, "enabled": enabled}
 
 
-# ==================== 晚间总结API ====================
-
-@app.get("/api/summary/latest")
-async def get_latest_evening_summary():
-    from attention.features.hourly_checkin import get_latest_summary
-    summary = get_latest_summary()
-    return summary if summary else {"message": "暂无晚间总结"}
-
-
-@app.get("/api/summary/{date_str}")
-async def get_evening_summary(date_str: str):
-    from attention.features.hourly_checkin import get_summary_by_date
-    summary = get_summary_by_date(date_str)
-    return summary if summary else {"message": f"{date_str} 暂无晚间总结"}
-
-
-@app.post("/api/summary/generate")
-async def generate_summary_now(request: Request):
-    from attention.features.hourly_checkin import generate_evening_summary
-    today = datetime.now().strftime("%Y-%m-%d")
-    # 支持传入参数控制是否使用 LLM
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    use_llm = body.get("use_llm", True)
-    summary = generate_evening_summary(today, use_llm=use_llm)
-    if summary:
-        return summary.to_dict()
-    return {"message": "今日暂无签到数据，无法生成总结"}
-
-
 # ==================== WebSocket ====================
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket实时推送"""
     await manager.connect(websocket)
     try:
         while True:
             try:
                 status = await get_current_status()
-                # 如果 _safe_route 包装返回了 JSONResponse，解析它
                 if hasattr(status, 'body'):
                     import json as _json
                     status = _json.loads(status.body)
@@ -869,19 +618,16 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.post("/api/chat/send")
 async def chat_send(request: Request):
-    """发送用户消息，返回 AI 回复"""
     try:
         body = await request.json()
         text = body.get("text", "").strip()
         if not text:
-            return JSONResponse(status_code=400,
-                                content={"error": "消息不能为空"})
+            return JSONResponse(status_code=400, content={"error": "消息不能为空"})
 
         from attention.core.dialogue_agent import get_dialogue_agent
         agent = get_dialogue_agent()
         response = agent.user_message(text)
 
-        # 同步到悬浮窗显示
         try:
             from attention.ui.chat_overlay import get_chat_overlay
             overlay = get_chat_overlay()
@@ -895,25 +641,21 @@ async def chat_send(request: Request):
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
     except Exception as e:
-        return JSONResponse(status_code=500,
-                            content={"error": str(e)})
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @app.get("/api/chat/history")
 async def chat_history():
-    """获取对话历史"""
     try:
         from attention.core.dialogue_agent import get_dialogue_agent
         agent = get_dialogue_agent()
         return {"success": True, "messages": agent.get_history()}
     except Exception as e:
-        return JSONResponse(status_code=500,
-                            content={"error": str(e)})
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @app.post("/api/chat/export")
 async def chat_export():
-    """导出今日对话为 Markdown"""
     try:
         from attention.core.dialogue_agent import get_dialogue_agent
         from attention.features.chat_logger import save_chat_log
@@ -926,8 +668,7 @@ async def chat_export():
             "message": f"已导出到 {filepath.name}",
         }
     except Exception as e:
-        return JSONResponse(status_code=500,
-                            content={"error": str(e)})
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 # ==================== 对话日志查阅 API ====================
@@ -935,15 +676,13 @@ async def chat_export():
 @app.get("/api/chatlog/list")
 @_safe_route
 async def list_chat_logs():
-    """列出所有对话日志文件（按日期倒序）"""
     chat_log_dir = Config.DATA_DIR / "chat_logs"
     if not chat_log_dir.exists():
         return {"dates": []}
 
     dates = []
     for f in sorted(chat_log_dir.glob("chat_log_*.md"), reverse=True):
-        # Extract date from filename: chat_log_YYYY-MM-DD.md
-        name = f.stem  # chat_log_YYYY-MM-DD
+        name = f.stem
         if name.startswith("chat_log_"):
             date_str = name[len("chat_log_"):]
             dates.append(date_str)
@@ -954,7 +693,6 @@ async def list_chat_logs():
 @app.get("/api/chatlog/read/{date_str}")
 @_safe_route
 async def read_chat_log(date_str: str):
-    """读取指定日期的对话日志内容"""
     chat_log_dir = Config.DATA_DIR / "chat_logs"
     filepath = chat_log_dir / f"chat_log_{date_str}.md"
 
@@ -968,171 +706,11 @@ async def read_chat_log(date_str: str):
         return {"success": False, "error": f"读取失败: {e}"}
 
 
-# ==================== v5.2: 目标管理 API ====================
-
-@app.get("/api/goals")
-async def get_goals(include_archived: bool = False):
-    """获取所有目标"""
-    from attention.features.goal_manager import get_goal_manager
-    mgr = get_goal_manager()
-    return {
-        "goals": mgr.get_all(include_archived=include_archived),
-        "stats": mgr.get_stats(),
-    }
-
-
-@app.post("/api/goals")
-async def add_goal(request: Request):
-    """新增目标"""
-    data = await request.json()
-    from attention.features.goal_manager import get_goal_manager
-    mgr = get_goal_manager()
-    goal = mgr.add_goal(
-        title=data.get("title", ""),
-        description=data.get("description", ""),
-        priority=data.get("priority", "normal"),
-        tags=data.get("tags", []),
-        app_keywords=data.get("app_keywords", []),
-    )
-    return {"success": True, "goal": goal.to_dict()}
-
-
-@app.put("/api/goals/{goal_id}")
-async def update_goal(goal_id: str, request: Request):
-    """更新目标"""
-    data = await request.json()
-    from attention.features.goal_manager import get_goal_manager
-    mgr = get_goal_manager()
-    goal = mgr.update_goal(goal_id, **data)
-    if goal:
-        return {"success": True, "goal": goal.to_dict()}
-    return JSONResponse(status_code=404, content={"error": "目标不存在"})
-
-
-@app.delete("/api/goals/{goal_id}")
-async def delete_goal(goal_id: str):
-    """删除目标"""
-    from attention.features.goal_manager import get_goal_manager
-    mgr = get_goal_manager()
-    if mgr.delete_goal(goal_id):
-        return {"success": True}
-    return JSONResponse(status_code=404, content={"error": "目标不存在"})
-
-
-@app.post("/api/goals/{goal_id}/subtasks")
-async def add_subtask(goal_id: str, request: Request):
-    """为目标添加子任务"""
-    data = await request.json()
-    from attention.features.goal_manager import get_goal_manager
-    mgr = get_goal_manager()
-    st = mgr.add_subtask(
-        goal_id=goal_id,
-        title=data.get("title", ""),
-        deadline=data.get("deadline"),
-        estimated_minutes=data.get("estimated_minutes", 0),
-        app_keywords=data.get("app_keywords", []),
-    )
-    if st:
-        return {"success": True, "subtask": st.to_dict()}
-    return JSONResponse(status_code=404, content={"error": "目标不存在"})
-
-
-@app.post("/api/goals/{goal_id}/subtasks/{subtask_id}/toggle")
-async def toggle_subtask(goal_id: str, subtask_id: str):
-    """切换子任务完成状态"""
-    from attention.features.goal_manager import get_goal_manager
-    mgr = get_goal_manager()
-    st = mgr.toggle_subtask(goal_id, subtask_id)
-    if st:
-        return {"success": True, "subtask": st.to_dict()}
-    return JSONResponse(status_code=404, content={"error": "子任务不存在"})
-
-
-@app.delete("/api/goals/{goal_id}/subtasks/{subtask_id}")
-async def delete_subtask(goal_id: str, subtask_id: str):
-    """删除子任务"""
-    from attention.features.goal_manager import get_goal_manager
-    mgr = get_goal_manager()
-    if mgr.delete_subtask(goal_id, subtask_id):
-        return {"success": True}
-    return JSONResponse(status_code=404, content={"error": "子任务不存在"})
-
-
-@app.get("/api/goals/deadlines")
-async def get_deadlines(hours: int = 72):
-    """获取即将到期的 deadline"""
-    from attention.features.goal_manager import get_goal_manager
-    mgr = get_goal_manager()
-    return {"deadlines": mgr.get_upcoming_deadlines(hours=hours)}
-
-
-@app.get("/api/goals/recommendation")
-async def get_recommendation():
-    """获取当前推荐任务"""
-    from attention.features.goal_manager import get_goal_manager
-    mgr = get_goal_manager()
-    return mgr.what_should_i_do_now()
-
-
-# ==================== v5.2: 主动规划 API ====================
-
-@app.get("/api/planner/status")
-async def get_planner_status():
-    """获取主动规划引擎状态"""
-    from attention.features.active_planner import get_active_planner
-    planner = get_active_planner()
-    return planner.get_status()
-
-
-@app.post("/api/planner/rest")
-async def declare_rest(request: Request):
-    """声明合法休息"""
-    data = await request.json()
-    from attention.features.active_planner import get_active_planner
-    planner = get_active_planner()
-    result = planner.declare_rest(
-        minutes=data.get("minutes", 15),
-        reason=data.get("reason", ""),
-    )
-    return {"success": True, "rest": result}
-
-
-@app.post("/api/planner/rest/end")
-async def end_rest():
-    """结束休息"""
-    from attention.features.active_planner import get_active_planner
-    planner = get_active_planner()
-    result = planner.end_rest()
-    return {"success": True, "rest": result}
-
-
-@app.post("/api/planner/override")
-async def override_plan(request: Request):
-    """临时变更计划"""
-    data = await request.json()
-    from attention.features.active_planner import get_active_planner
-    planner = get_active_planner()
-    planner.override_plan(
-        task_description=data.get("task", ""),
-        duration_minutes=data.get("duration_minutes", 60),
-    )
-    return {"success": True, "plan": planner.get_active_plan()}
-
-
-@app.get("/api/planner/plan")
-async def get_current_plan():
-    """获取当前活跃计划"""
-    from attention.features.active_planner import get_active_planner
-    planner = get_active_planner()
-    return planner.get_active_plan()
-
-
 # ==================== API 设置管理 ====================
 
 @app.get("/api/settings/providers")
 @_safe_route
 async def get_providers():
-    """获取所有 LLM 提供商配置"""
     from attention.core.api_settings import get_api_settings
     mgr = get_api_settings()
     return {"providers": mgr.get_all_configs()}
@@ -1141,7 +719,6 @@ async def get_providers():
 @app.post("/api/settings/providers/{provider}/key")
 @_safe_route
 async def set_provider_key(provider: str, request: Request):
-    """设置指定提供商的 API key"""
     from attention.core.api_settings import get_api_settings
     try:
         body = await request.json()
@@ -1154,18 +731,12 @@ async def set_provider_key(provider: str, request: Request):
     ok = mgr.set_api_key(provider, api_key)
     if not ok:
         return {"success": False, "error": "提供商不存在或保存失败"}
-    return {
-        "success": True,
-        "message": f"{provider} 的 API key 已保存，可点击测试验证连通性。"
-    }
-
-
+    return {"success": True, "message": f"{provider} 的 API key 已保存"}
 
 
 @app.post("/api/settings/providers/{provider}/config")
 @_safe_route
 async def update_provider_config(provider: str, request: Request):
-    """更新指定提供商配置（模型/API Base）"""
     from attention.core.api_settings import get_api_settings
     try:
         body = await request.json()
@@ -1179,7 +750,6 @@ async def update_provider_config(provider: str, request: Request):
     updates = {}
     if text_model:
         updates["text_model"] = text_model
-    # 允许清空视觉模型
     if "vision_model" in body:
         updates["vision_model"] = vision_model
     if api_base:
@@ -1193,10 +763,11 @@ async def update_provider_config(provider: str, request: Request):
     if not ok:
         return {"success": False, "error": "提供商不存在或更新失败"}
     return {"success": True, "message": f"{provider} 配置已更新"}
+
+
 @app.post("/api/settings/providers/{provider}/test")
 @_safe_route
 async def test_provider_key(provider: str, request: Request):
-    """测试指定提供商的 API key 连通性"""
     from attention.core.api_settings import get_api_settings
     try:
         body = await request.json()
@@ -1211,7 +782,6 @@ async def test_provider_key(provider: str, request: Request):
 @app.post("/api/settings/providers/active")
 @_safe_route
 async def set_active_provider(request: Request):
-    """设置当前激活的 LLM 提供商"""
     from attention.core.api_settings import get_api_settings
     try:
         body = await request.json()
@@ -1232,7 +802,6 @@ async def set_active_provider(request: Request):
 @app.get("/api/settings/autostart")
 @_safe_route
 async def get_autostart_status():
-    """获取开机自启状态"""
     import platform
     from attention.core.autostart_manager import AutoStartManager
     from attention.core.app_settings import get_app_settings
@@ -1251,7 +820,6 @@ async def get_autostart_status():
 @app.post("/api/settings/autostart")
 @_safe_route
 async def set_autostart(request: Request):
-    """启用或禁用开机自启"""
     from attention.core.autostart_manager import AutoStartManager
     from attention.core.app_settings import get_app_settings
 
@@ -1268,7 +836,6 @@ async def set_autostart(request: Request):
     else:
         success = mgr.disable()
 
-    # 持久化用户偏好
     settings = get_app_settings()
     settings.auto_start_enabled = enabled
 
@@ -1284,7 +851,6 @@ async def set_autostart(request: Request):
 @app.get("/api/settings/theme")
 @_safe_route
 async def get_theme():
-    """获取当前界面主题"""
     from attention.core.app_settings import get_app_settings
     return {"theme": get_app_settings().theme}
 
@@ -1292,14 +858,12 @@ async def get_theme():
 @app.post("/api/settings/theme")
 @_safe_route
 async def set_app_theme(request: Request):
-    """设置界面主题（dark/light），并同步到悬浮窗"""
     from attention.core.app_settings import get_app_settings
     params = dict(request.query_params)
     theme = params.get("theme", "").strip()
     if theme not in ("dark", "light"):
         return {"success": False, "error": "无效的主题值，仅支持 dark 或 light"}
     get_app_settings().theme = theme
-    # 同步到已运行的悬浮窗
     try:
         from attention.ui.chat_overlay import get_chat_overlay
         overlay = get_chat_overlay()
@@ -1315,7 +879,6 @@ async def set_app_theme(request: Request):
 @app.post("/api/memo/save")
 @_safe_route
 async def save_memo(request: Request):
-    """保存随手记内容到长期记忆（Markdown 格式）"""
     try:
         body = await request.json()
     except Exception:
@@ -1324,14 +887,12 @@ async def save_memo(request: Request):
     if not content:
         return {"success": False, "error": "内容不能为空"}
 
-    # 保存为 Markdown 文件到 data/memos/
     memo_dir = Config.DATA_DIR / "memos"
     memo_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"memo_{timestamp}.md"
     filepath = memo_dir / filename
 
-    # 构建 Markdown 内容
     md_content = f"# 随手记 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n{content}\n"
     filepath.write_text(md_content, encoding="utf-8")
 
@@ -1346,7 +907,6 @@ async def save_memo(request: Request):
 @app.get("/api/memo/list")
 @_safe_route
 async def list_memos():
-    """获取所有随手记列表"""
     memo_dir = Config.DATA_DIR / "memos"
     if not memo_dir.exists():
         return {"memos": []}
@@ -1355,7 +915,6 @@ async def list_memos():
     for f in sorted(memo_dir.glob("memo_*.md"), reverse=True):
         try:
             text = f.read_text(encoding="utf-8")
-            # 提取预览（跳过标题行）
             lines = text.strip().split("\n")
             preview = ""
             for line in lines:
@@ -1370,87 +929,7 @@ async def list_memos():
         except Exception:
             pass
 
-    return {"memos": memos[:50]}  # 最多返回 50 条
-
-
-# ==================== 插件管理 API ====================
-
-@app.get("/api/plugins")
-@_safe_route
-async def list_plugins():
-    """获取所有已注册插件的列表"""
-    from attention.core.plugin_manager import get_plugin_manager
-    mgr = get_plugin_manager()
-    return {"plugins": mgr.list_plugins()}
-
-
-@app.post("/api/plugins/{name}/activate")
-@_safe_route
-async def activate_plugin(name: str):
-    """激活指定插件"""
-    from attention.core.plugin_manager import get_plugin_manager
-    mgr = get_plugin_manager()
-    ok = mgr.activate_plugin(name)
-    if ok:
-        return {"success": True, "message": f"插件 {name} 已激活"}
-    return JSONResponse(
-        status_code=400,
-        content={"success": False, "error": f"插件 {name} 激活失败"},
-    )
-
-
-@app.post("/api/plugins/{name}/deactivate")
-@_safe_route
-async def deactivate_plugin(name: str):
-    """停用指定插件"""
-    from attention.core.plugin_manager import get_plugin_manager
-    mgr = get_plugin_manager()
-    ok = mgr.deactivate_plugin(name)
-    if ok:
-        return {"success": True, "message": f"插件 {name} 已停用"}
-    return JSONResponse(
-        status_code=400,
-        content={"success": False, "error": f"插件 {name} 停用失败"},
-    )
-
-
-@app.post("/api/plugins/{name}/config")
-@_safe_route
-async def update_plugin_config(name: str, request: Request):
-    """更新插件配置"""
-    from attention.core.plugin_manager import get_plugin_manager
-    mgr = get_plugin_manager()
-    body = await request.json()
-    config = body.get("config", {})
-    ok = mgr.update_plugin_config(name, config)
-    if ok:
-        return {"success": True, "message": f"插件 {name} 配置已更新"}
-    return JSONResponse(
-        status_code=400,
-        content={"success": False, "error": f"插件 {name} 不存在"},
-    )
-
-
-@app.get("/api/plugins/events")
-@_safe_route
-async def get_event_history():
-    """获取最近的事件历史（调试用）"""
-    from attention.core.event_bus import get_event_bus
-    bus = get_event_bus()
-    return {
-        "history": bus.get_history(50),
-        "listeners": bus.get_listeners(),
-    }
-
-
-@app.post("/api/plugins/discover")
-@_safe_route
-async def discover_plugins():
-    """重新扫描插件目录"""
-    from attention.core.plugin_manager import get_plugin_manager
-    mgr = get_plugin_manager()
-    mgr.discover_plugins()
-    return {"success": True, "plugins": mgr.list_plugins()}
+    return {"memos": memos[:50]}
 
 
 # ==================== 静态文件 ====================

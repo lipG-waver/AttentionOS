@@ -13,8 +13,7 @@ class Config:
     # API 默认端点常量（仅作备用，实际调用由 llm_provider 控制）
     QWEN_API_BASE = "https://api-inference.modelscope.cn/v1"
     MODEL_NAME = "Qwen/Qwen3-VL-235B-A22B-Instruct"             # 视觉模型（截屏分析）
-    TEXT_MODEL_NAME = "Qwen/Qwen3-Next-80B-A3B-Instruct"        # 文本模型（任务解析、提醒生成、回顾等）
-    SENSEVOICE_MODEL = "iic/SenseVoiceSmall"                   # 语音模型（语音识别 + 情感检测）
+    TEXT_MODEL_NAME = "Qwen/Qwen3-Next-80B-A3B-Instruct"        # 文本模型（任务解析、提醒生成等）
     
     # 监控配置
     CHECK_INTERVAL = 60  # 截图分析间隔（秒）
@@ -52,23 +51,6 @@ class Config:
         "enabled": True,          # 是否启用：检测到用户持久离开时跳过截图和LLM分析
         "idle_threshold": 300,    # 空闲超过N秒判定为持久离开（默认5分钟）
         "log_interval": 300,      # 每隔N秒在控制台输出一次"已跳过"提示（避免刷屏）
-    }
-
-    # 主动规划配置 (v5.2)
-    ACTIVE_PLANNER = {
-        "enabled": True,              # 是否启用主动规划引擎
-        "off_plan_threshold": 3,      # 连续偏离多少个周期才介入（3×CHECK_INTERVAL）
-        "nudge_cooldown": 600,        # 计划提醒冷却时间（秒）
-        "max_rest_minutes": 30,       # 最大合法休息时长（分钟）
-        "default_rest_minutes": 15,   # 默认休息时长（分钟）
-        "show_plan_on_start": True,   # 启动时是否主动告知计划
-    }
-    
-    # 插件系统配置
-    PLUGINS = {
-        "enabled": True,               # 是否启用插件系统
-        "plugin_dirs": [],             # 额外的插件目录（默认会扫描项目根/plugins）
-        "auto_activate": True,         # 发现插件后是否自动激活（已保存为启用的）
     }
 
     # 自动启动配置

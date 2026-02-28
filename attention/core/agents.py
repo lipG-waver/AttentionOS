@@ -4,9 +4,7 @@
 本项目采用 Multi-Agent 架构，包含以下 Agent 角色：
 - analyzer  : 屏幕内容分析 Agent（视觉模型）
 - coach     : 注意力教练 Agent（生成提醒、鼓励）
-- reviewer  : 效率回顾分析 Agent（一日回顾、周洞察）
 - parser    : 任务解析 Agent（自然语言 → 结构化任务）
-- summarizer: 签到总结 Agent（晚间叙事回顾）
 
 每个 Agent 拥有独立的 system prompt，通过统一的 LLMClient 调用模型。
 """
@@ -38,25 +36,9 @@ AGENT_PROMPTS: Dict[str, str] = {
         "说话简短有力，每条回复不超过 2-3 句话。用 emoji 增加亲和力但不过度。"
         "专注模式下极度简洁，分心提醒时先共情再轻推，不说教。"
     ),
-    "reviewer": (
-        "你是效率回顾分析师。根据用户的目标完成情况、效率数据和番茄钟记录，"
-        "客观评估一天的表现，给出具体的亮点和改进建议。"
-        "语气温暖、建设性，避免批判。"
-    ),
     "parser": (
         "你是一个精确的任务解析助手。将用户的自然语言输入解析为结构化任务信息。"
         "只输出 JSON，不输出任何其他文字。"
-    ),
-    "summarizer": (
-        "你是一位擅长叙事的工作日志撰写者。根据用户的签到记录，"
-        "生成一份简洁、有温度的每日工作叙事总结。"
-    ),
-    "planner": (
-        "你是一个友好的计划引导助手。你的任务是在检测到用户当前活动偏离计划时，"
-        "用好奇、轻松的语气确认用户的意图。"
-        "你不说教、不批判，像朋友一样问'你在忙别的事吗'或'想休息一下吗'。"
-        "永远提供两个选项：回到计划 或 休息一会儿。"
-        "每条回复不超过 2 句话。"
     ),
 }
 
@@ -77,7 +59,7 @@ def call_agent(
     调用指定角色的 Agent。
 
     Args:
-        role:         Agent 角色名（analyzer / coach / reviewer / parser / summarizer）
+        role:         Agent 角色名（analyzer / coach / dialogue / parser）
         user_message: 用户消息 / 上下文
         max_tokens:   最大生成 token 数
         temperature:  采样温度
