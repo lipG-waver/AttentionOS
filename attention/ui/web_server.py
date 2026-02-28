@@ -342,10 +342,47 @@ async def pomodoro_update_settings(request: Request):
 
 @app.get("/api/todos")
 @_safe_route
-async def get_todos():
+async def get_todos(request: Request):
+    """
+    获取待办事项列表，支持搜索和过滤。
+
+    Query params:
+      q:                关键词搜索（标题/标签）
+      due:              due=today | due=overdue | due=upcoming
+      days:             upcoming 时的天数窗口（默认7）
+      tag:              按标签过滤（精确匹配）
+      priority:         按优先级过滤（urgent/high/normal/low）
+      include_completed: 是否包含已完成（默认 true）
+    """
     from attention.features.todo_manager import get_todo_manager
     mgr = get_todo_manager()
-    return {"todos": mgr.get_all(), "stats": mgr.get_stats()}
+    params = dict(request.query_params)
+
+    q = params.get("q", "").strip()
+    due = params.get("due", "").strip().lower()
+    days = int(params.get("days", 7))
+    tag = params.get("tag", "").strip()
+    priority = params.get("priority", "").strip()
+    include_completed = params.get("include_completed", "true").lower() != "false"
+
+    if due == "today":
+        todos = mgr.get_due_today()
+    elif due == "overdue":
+        todos = mgr.get_overdue()
+    elif due == "upcoming":
+        todos = mgr.get_upcoming(days=days)
+    elif q:
+        todos = mgr.search(q, include_completed=include_completed)
+    else:
+        todos = mgr.get_all(include_completed=include_completed)
+
+    # 在结果中二次过滤 tag / priority
+    if tag:
+        todos = [t for t in todos if tag in (t.get("tags") or [])]
+    if priority:
+        todos = [t for t in todos if t.get("priority") == priority]
+
+    return {"todos": todos, "stats": mgr.get_stats()}
 
 
 @app.post("/api/todos")
@@ -378,10 +415,39 @@ async def toggle_todo(todo_id: str):
     return {"success": False, "error": "未找到该待办事项"}
 
 
+@app.delete("/api/todos/completed")
+async def clear_completed_todos():
+    """清空所有已完成的待办事项"""
+    from attention.features.todo_manager import get_todo_manager
+    deleted = get_todo_manager().clear_completed()
+    return {"success": True, "deleted": deleted}
+
+
 @app.delete("/api/todos/{todo_id}")
 async def delete_todo(todo_id: str):
     from attention.features.todo_manager import get_todo_manager
     return {"success": get_todo_manager().delete(todo_id)}
+
+
+@app.get("/api/todos/search")
+@_safe_route
+async def search_todos(request: Request):
+    """
+    按关键词搜索待办事项（GET /api/todos?q= 的语义别名）。
+
+    Query params:
+      q:                 搜索关键词（必填）
+      include_completed: 是否包含已完成（默认 false）
+    """
+    from attention.features.todo_manager import get_todo_manager
+    params = dict(request.query_params)
+    q = params.get("q", "").strip()
+    if not q:
+        return {"success": False, "error": "请提供搜索关键词 q"}
+    include_completed = params.get("include_completed", "false").lower() != "false"
+    mgr = get_todo_manager()
+    todos = mgr.search(q, include_completed=include_completed)
+    return {"success": True, "todos": todos, "count": len(todos), "keyword": q}
 
 
 @app.post("/api/todos/smart-add")

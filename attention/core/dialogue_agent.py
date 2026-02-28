@@ -165,6 +165,11 @@ class DialogueAgent:
         if bulk_response is not None:
             return bulk_response
 
+        # 检测待办查询/管理意图（查看、搜索、清空）
+        query_response = self._detect_todo_query_intent(text)
+        if query_response is not None:
+            return query_response
+
         # 检测待办创建意图
         todo_response = self._detect_todo_intent(text)
         if todo_response:
@@ -297,6 +302,119 @@ class DialogueAgent:
 
         self._add_message("assistant", confirm, msg_type="thought_capture")
         return confirm
+
+    def _detect_todo_query_intent(self, text: str) -> Optional[str]:
+        """
+        检测待办的查询/管理意图：
+          - 查看今日待办 / 逾期任务 / 即将到期 / 所有任务
+          - 搜索关键词
+          - 清空已完成
+        返回格式化后的消息，或 None（未命中）。
+        """
+        import re
+
+        t = text.strip()
+
+        # ---- 清空已完成 ----
+        if re.search(r"清[空除掉]?(?:所有)?已完成|清[空除]已完成|删除已完成|清掉已完成|清完成", t):
+            try:
+                from attention.features.todo_manager import get_todo_manager
+                n = get_todo_manager().clear_completed()
+                msg = f"🗑️ 已清空 {n} 条完成的待办 ✨" if n else "没有已完成的待办需要清空 👌"
+                self._add_message("user", t)
+                self._add_message("assistant", msg)
+                return msg
+            except Exception as e:
+                logger.warning(f"清空已完成失败: {e}")
+                return None
+
+        # ---- 搜索关键词 ----
+        m = re.search(r"(?:搜索|查找|找[一找]?找?|找下)(?:待办|任务)?[「\s:：]*([\w\u4e00-\u9fa5]+)", t)
+        if m:
+            keyword = m.group(1).strip()
+            try:
+                from attention.features.todo_manager import get_todo_manager
+                results = get_todo_manager().search(keyword, include_completed=False)
+                msg = self._format_todo_list(results, f"搜索「{keyword}」")
+                self._add_message("user", t)
+                self._add_message("assistant", msg)
+                return msg
+            except Exception as e:
+                logger.warning(f"搜索待办失败: {e}")
+                return None
+
+        # ---- 查看今日待办 ----
+        if re.search(r"今[天日].*?(?:待办|任务|要做|该做|安排)|(?:待办|任务).*?今[天日]|今[天日]有[什哪]", t):
+            try:
+                from attention.features.todo_manager import get_todo_manager
+                results = get_todo_manager().get_due_today()
+                msg = self._format_todo_list(results, "今日待办")
+                self._add_message("user", t)
+                self._add_message("assistant", msg)
+                return msg
+            except Exception as e:
+                logger.warning(f"获取今日待办失败: {e}")
+                return None
+
+        # ---- 查看逾期任务 ----
+        if re.search(r"逾期|过期|超期|过了.*?截止|没完成.*?(?:任务|待办)", t):
+            try:
+                from attention.features.todo_manager import get_todo_manager
+                results = get_todo_manager().get_overdue()
+                msg = self._format_todo_list(results, "逾期待办")
+                self._add_message("user", t)
+                self._add_message("assistant", msg)
+                return msg
+            except Exception as e:
+                logger.warning(f"获取逾期待办失败: {e}")
+                return None
+
+        # ---- 查看即将到期（本周/未来7天）----
+        if re.search(r"(?:本|这|即将|快要|最近).*?(?:到期|截止|待办|任务)|(?:待办|任务).*?(?:本|这)周|近期.*?(?:待办|任务)", t):
+            try:
+                from attention.features.todo_manager import get_todo_manager
+                results = get_todo_manager().get_upcoming(days=7)
+                msg = self._format_todo_list(results, "近7天待办")
+                self._add_message("user", t)
+                self._add_message("assistant", msg)
+                return msg
+            except Exception as e:
+                logger.warning(f"获取近期待办失败: {e}")
+                return None
+
+        # ---- 查看所有待办 ----
+        if re.search(r"(?:查看|看看|列出|显示|show).*?(?:所有|全部|全[部]?|所有的)?(?:待办|任务|todo)|(?:所有|全部).*?(?:待办|任务)", t):
+            try:
+                from attention.features.todo_manager import get_todo_manager
+                mgr = get_todo_manager()
+                results = mgr.get_all(include_completed=False)
+                stats = mgr.get_stats()
+                msg = self._format_todo_list(results, f"全部待办（{stats['pending']} 条未完成）")
+                self._add_message("user", t)
+                self._add_message("assistant", msg)
+                return msg
+            except Exception as e:
+                logger.warning(f"获取所有待办失败: {e}")
+                return None
+
+        return None
+
+    def _format_todo_list(self, todos: List[Dict], title: str) -> str:
+        """将待办列表格式化为对话气泡友好的字符串"""
+        if not todos:
+            return f"📋 {title}：暂时没有任务 🎉"
+
+        lines = [f"📋 {title}（{len(todos)} 条）："]
+        priority_icons = {"urgent": "🔴", "high": "🟠", "normal": "🟡", "low": "🔵"}
+        for t in todos[:10]:  # 最多显示10条
+            icon = priority_icons.get(t.get("priority", "normal"), "🟡")
+            title_text = t.get("title", "")
+            deadline = t.get("deadline", "")
+            dl_str = f" · {deadline}" if deadline else ""
+            lines.append(f"  {icon} {title_text}{dl_str}")
+        if len(todos) > 10:
+            lines.append(f"  … 还有 {len(todos) - 10} 条，详情见 Web 界面")
+        return "\n".join(lines)
 
     def _detect_todo_intent(self, text: str) -> Optional[str]:
         """
