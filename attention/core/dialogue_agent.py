@@ -73,39 +73,24 @@ DIALOGUE_SYSTEM_PROMPT = """你是 Attention OS 的内置对话助手——一�
 ## 关于 Attention OS
 Attention OS 是一款桌面端 AI 注意力管理助手，通过持续截图与视觉 AI 分析用户屏幕，实时追踪工作状态。
 
-核心功能模块：
-1. 【屏幕分析】每60秒截图一次，用视觉模型分析当前应用/任务/分心状态，输出活动率、专注度等指标
+核心功能：
+1. 【屏幕分析】每60秒截图一次，用视觉模型分析当前应用/任务/分心状态
 2. 【番茄钟 Pomodoro】支持25/45/90分钟工作+休息循环，可在聊天或Web界面启动/停止
-3. 【今日目标 Goals】用户在Web界面设定今日目标，系统检测屏幕是否匹配目标，偏离时提醒
-4. 【长期目标与Deadline】两层体系：长期Goal（挂子任务/截止日）+ 独立Deadline。/deadlines 命令查看
-5. 【待办事项 Todo】自然语言添加Todo（自动解析优先级、标签、截止时间），支持今日任务、归档、完成
-6. 【每日简报 Daily Briefing】早晨启动时生成当日工作建议和重点提醒
-7. 【每日报告 Daily Report】晚间汇总当天屏幕活动、专注时长、应用分布，AI生成叙事总结
-8. 【每小时签到 Hourly Check-in】每小时AI分析近期活动，记录工作日志
-9. 【周洞察 Weekly Insight】每周日自动生成一周工作模式分析报告
-10. 【主动计划 Active Planner】根据Goals/Deadline智能推荐当前最该做的任务；检测活动与计划偏离时主动对话
-11. 【休息管理 Break Reminder】定时提醒起身休息；/rest 声明合法休息可暂停分心检测
-12. 【恢复提醒 Recovery Reminder】从分心状态恢复后给予鼓励
-13. 【工作开始追踪 Work Start Tracker】检测每日首次专注时刻并记录
+3. 【待办事项 Todo】自然语言添加Todo（自动解析优先级、标签、截止时间）
+4. 【每小时签到 Hourly Check-in】每小时询问用户在做什么，记录工作日志
+5. 【休息管理 Break Reminder】定时提醒起身休息
 
 Web界面（http://localhost:5000）功能：
 - 仪表盘：实时状态、活动率、今日统计
-- 今日目标：添加/管理目标，查看达成情况
-- 待办事项：添加/完成/归档 Todo
+- 待办事项：添加/完成 Todo
 - 番茄钟：启动/停止，自定义时长
-- 日报/周报：查看AI生成的分析报告
-- 设置：AI模型配置（API Key/模型选择）、工作时间、提醒间隔等
+- 设置：AI模型配置（API Key/模型选择）
 
-对话斜杠命令：
+对话命令：
 - /help → 帮助列表
-- /plan → 查看当前推荐计划/任务
-- /goals → 今日目标
-- /rest [分钟] → 声明合法休息（默认15分钟），暂停分心检测
-- /back → 结束休息，回到工作
-- /switch [任务] → 临时切换到其他任务（60分钟）
-- /status → 当前注意力/专注/休息状态
-- /deadlines → 查看即将到期的 Deadline
+- /status → 当前注意力/专注状态
 - /thoughts → 查看本次专注记录的想法
+- /export → 导出今日对话
 
 ## 你的回复原则
 1. 说话简短有力，每条回复不超过 2-3 句话
@@ -117,7 +102,6 @@ Web界面（http://localhost:5000）功能：
    - 🎯 专注中：惜字如金，像安静的助手
    - ⚠️ 分心时：像关心你的朋友，问"怎么了"
    - ☕ 休息中：轻松聊天，鼓励真正放松
-   - 📋 规划时：帮忙梳理思路，有条理
 
 重要：永远不要长篇大论。你是桌面小球里弹出的对话框，空间有限。"""
 
@@ -169,11 +153,6 @@ class DialogueAgent:
         if text.startswith("/"):
             return self._handle_command(text, ctx)
 
-        # v5.2: 检测自然语言中的休息/计划变更意图
-        rest_response = self._detect_rest_intent(text)
-        if rest_response:
-            return rest_response
-
         # 检测待办创建意图
         todo_response = self._detect_todo_intent(text)
         if todo_response:
@@ -222,37 +201,6 @@ class DialogueAgent:
         import random
         msg = random.choice(prompts)
         self._add_message("assistant", msg, msg_type="status")
-        return msg
-
-    def proactive_plan_check(self, plan_context: Dict[str, Any]) -> str:
-        """
-        系统主动发起的计划确认对话。(v5.2)
-        
-        根据 ActivePlanner 检测到的不匹配情况，生成引导性对话。
-        """
-        action = plan_context.get("action", "")
-        msg_ctx = plan_context.get("message_context", {})
-
-        try:
-            from attention.features.active_planner import get_active_planner
-            planner = get_active_planner()
-
-            if action == "plan_check":
-                msg = planner.generate_plan_check_message(msg_ctx)
-            elif action == "rest_ending":
-                msg = planner.generate_rest_ending_message(msg_ctx)
-            elif action == "rest_over":
-                msg = planner.generate_rest_over_message(msg_ctx)
-            elif action == "plan_suggestion":
-                msg = planner.generate_plan_suggestion_message()
-            else:
-                msg = "📋 有个计划相关的提醒~"
-        except Exception as e:
-            logger.warning(f"计划对话生成失败: {e}")
-            msg = "📋 注意到你的活动和计划有些不同，要调整一下吗？"
-
-        self._add_message("assistant", msg, msg_type="nudge",
-                         metadata={"action": action})
         return msg
 
     def focus_start_message(self, task: str, duration_min: int) -> str:
@@ -338,53 +286,6 @@ class DialogueAgent:
         self._add_message("assistant", confirm, msg_type="thought_capture")
         return confirm
 
-    def _detect_rest_intent(self, text: str) -> Optional[str]:
-        """
-        检测自然语言中的休息意图。(v5.2)
-        
-        识别类似："我想摆烂"、"休息一下"、"刷会儿手机"、"我想歇会儿" 等表达。
-        """
-        import re
-        text_lower = text.lower()
-
-        rest_patterns = [
-            r"摆烂", r"休息", r"歇[会一]", r"刷[会一]", r"放松",
-            r"不想[干做工]", r"偷[会个]懒", r"玩[会一]",
-            r"看[会一][儿]?视频", r"看[会一][儿]?手机",
-            r"take a break", r"chill", r"relax",
-        ]
-
-        matched = False
-        for pat in rest_patterns:
-            if re.search(pat, text_lower):
-                matched = True
-                break
-
-        if not matched:
-            return None
-
-        # 尝试提取时长
-        minutes = 15  # 默认
-        m = re.search(r"(\d+)\s*分钟", text)
-        if m:
-            minutes = min(int(m.group(1)), 30)
-        elif "半小时" in text or "半个小时" in text:
-            minutes = 30
-        elif "一小时" in text or "一个小时" in text:
-            minutes = 30  # cap at 30
-
-        try:
-            from attention.features.active_planner import get_active_planner
-            planner = get_active_planner()
-            planner.declare_rest(minutes, reason=text)
-            msg = f"☕ 收到，休息 {minutes} 分钟！到时间我叫你~ ⏰"
-            self._add_message("user", text)
-            self._add_message("assistant", msg, msg_type="status")
-            return msg
-        except Exception as e:
-            logger.debug(f"自动休息声明失败: {e}")
-            return None
-
     def _detect_todo_intent(self, text: str) -> Optional[str]:
         """
         检测自然语言中的待办创建意图，并实际调用 todo_manager 创建任务。
@@ -442,52 +343,16 @@ class DialogueAgent:
         cmd = text.lower().strip()
         if cmd in ("/help", "/帮助"):
             return ("💡 可用命令：\n"
-                    "• 直接输入想法 → 快速记录\n"
-                    "• /plan → 查看当前计划与推荐任务\n"
-                    "• /goals → 查看今日目标\n"
-                    "• /rest [分钟] → 声明合法休息（默认15分钟）\n"
-                    "• /back → 结束休息，回到工作\n"
-                    "• /switch [任务] → 临时切换到其他任务\n"
-                    "• /status → 当前状态\n"
-                    "• /deadlines → 查看即将到期的deadline\n"
+                    "• 直接输入想法 → 快速记录（专注模式下）\n"
+                    "• /status → 当前注意力/专注状态\n"
                     "• /thoughts → 查看已记录的想法\n"
                     "• /export → 导出今日对话")
-        elif cmd in ("/goals", "/目标"):
-            if ctx.today_goals:
-                goals_text = "\n".join(f"  {'✅' if i < 0 else '🔲'} {g}"
-                                       for i, g in enumerate(ctx.today_goals))
-                return f"📋 今日目标：\n{goals_text}"
-            return "📋 还没有设定今日目标。"
-        elif cmd.startswith("/plan") or cmd.startswith("/计划"):
-            return self._handle_plan_command()
-        elif cmd.startswith("/rest") or cmd.startswith("/休息") or cmd.startswith("/摆烂"):
-            return self._handle_rest_command(text)
-        elif cmd in ("/back", "/回来", "/结束休息"):
-            return self._handle_end_rest()
-        elif cmd.startswith("/switch") or cmd.startswith("/切换"):
-            return self._handle_switch_command(text)
-        elif cmd.startswith("/deadlines") or cmd.startswith("/deadline") or cmd.startswith("/截止"):
-            return self._handle_deadlines_command()
         elif cmd in ("/status", "/状态"):
             if ctx.is_focus_mode:
                 mins = ctx.focus_remaining_seconds // 60
                 return f"🎯 专注中 — {ctx.focus_task}（剩余 {mins} 分钟）"
-            # 增加计划和休息状态
-            parts = [f"📊 当前状态：注意力 {ctx.attention_level} | "
-                     f"生产率 {ctx.productivity_ratio:.0%}"]
-            try:
-                from attention.features.active_planner import get_active_planner
-                planner = get_active_planner()
-                if planner.is_resting():
-                    rest = planner.get_rest_status()
-                    parts.append(f"\n☕ 休息中（还剩 {rest['remaining_minutes']} 分钟）")
-                else:
-                    plan = planner.get_active_plan()
-                    if plan.get("task_title"):
-                        parts.append(f"\n📋 当前计划：{plan['task_title']}")
-            except Exception:
-                pass
-            return "".join(parts)
+            return (f"📊 当前状态：注意力 {ctx.attention_level} | "
+                    f"生产率 {ctx.productivity_ratio:.0%}")
         elif cmd in ("/thoughts", "/想法"):
             if self._pending_thoughts:
                 items = "\n".join(f"  💭 {t}" for t in self._pending_thoughts)
@@ -495,101 +360,6 @@ class DialogueAgent:
             return "📝 暂时没有记录的想法。"
         else:
             return f"❓ 未知命令: {text}。输入 /help 查看可用命令。"
-
-    def _handle_plan_command(self) -> str:
-        """查看当前计划"""
-        try:
-            from attention.features.active_planner import get_active_planner
-            planner = get_active_planner()
-            return planner.generate_plan_suggestion_message()
-        except Exception as e:
-            logger.debug(f"获取计划失败: {e}")
-            return "📋 暂时无法获取计划信息。"
-
-    def _handle_rest_command(self, text: str) -> str:
-        """处理休息声明"""
-        import re
-        # 解析分钟数
-        minutes = 15  # 默认
-        m = re.search(r"(\d+)", text)
-        if m:
-            minutes = min(int(m.group(1)), 30)
-
-        reason = ""
-        # 尝试提取原因（在数字之后的文本）
-        parts = text.split(maxsplit=2)
-        if len(parts) > 2:
-            reason = parts[2] if not parts[2].isdigit() else ""
-        elif len(parts) > 1 and not parts[1].isdigit():
-            reason = parts[1]
-
-        try:
-            from attention.features.active_planner import get_active_planner
-            planner = get_active_planner()
-            result = planner.declare_rest(minutes, reason)
-            msg = f"☕ 好的，休息 {minutes} 分钟！"
-            if reason:
-                msg += f"（{reason}）"
-            msg += f"\n到时间我会提醒你 ⏰"
-            self._add_message("assistant", msg, msg_type="status")
-            return msg
-        except Exception as e:
-            logger.debug(f"声明休息失败: {e}")
-            return "暂时无法设置休息，稍后再试。"
-
-    def _handle_end_rest(self) -> str:
-        """结束休息"""
-        try:
-            from attention.features.active_planner import get_active_planner
-            planner = get_active_planner()
-            if not planner.is_resting():
-                return "你现在不在休息状态哦~"
-            planner.end_rest()
-            plan = planner.get_active_plan()
-            task = plan.get("task_title", "")
-            if task:
-                return f"💪 休息结束！推荐接下来做「{task}」，冲！"
-            return "💪 休息结束！准备好继续了吗？"
-        except Exception as e:
-            logger.debug(f"结束休息失败: {e}")
-            return "好的，继续工作！"
-
-    def _handle_switch_command(self, text: str) -> str:
-        """临时切换到其他任务"""
-        parts = text.split(maxsplit=1)
-        if len(parts) < 2 or not parts[1].strip():
-            return "❓ 用法：/switch 任务描述\n例如：/switch 回复邮件"
-        task = parts[1].strip()
-        try:
-            from attention.features.active_planner import get_active_planner
-            planner = get_active_planner()
-            planner.override_plan(task, duration_minutes=60)
-            return f"🔄 好的，当前计划切换为「{task}」（60分钟）。\n完成后输入 /plan 查看下一步。"
-        except Exception as e:
-            logger.debug(f"切换计划失败: {e}")
-            return f"📝 已记录：{task}"
-
-    def _handle_deadlines_command(self) -> str:
-        """查看即将到期的deadline"""
-        try:
-            from attention.features.goal_manager import get_goal_manager
-            deadlines = get_goal_manager().get_upcoming_deadlines(hours=72)
-            if not deadlines:
-                return "📅 接下来 3 天内没有 deadline。"
-            lines = ["📅 即将到期的 Deadline："]
-            for dl in deadlines[:5]:
-                hours = dl["hours_left"]
-                if hours <= 2:
-                    urgency = "🔴"
-                elif hours <= 24:
-                    urgency = "🟡"
-                else:
-                    urgency = "🟢"
-                lines.append(f"  {urgency} {dl['task_title']} — {dl['deadline']}（还剩 {hours:.0f}h）")
-            return "\n".join(lines)
-        except Exception as e:
-            logger.debug(f"获取deadline失败: {e}")
-            return "📅 暂时无法获取 deadline 信息。"
 
     def _chat_with_llm(self, text: str, ctx: SessionContext) -> str:
         """调用 LLM 生成多轮对话回复（使用 OpenAI 客户端，支持流式）"""
