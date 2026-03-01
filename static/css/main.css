@@ -1,46 +1,47 @@
+        /* ─── Zen 极简禅意 设计系统 ─── */
         :root {
-            --bg-deep: #0a0b0f;
-            --bg-card: rgba(255,255,255,0.035);
-            --bg-card-hover: rgba(255,255,255,0.06);
-            --border: rgba(255,255,255,0.07);
-            --text-primary: #e8eaed;
-            --text-secondary: #7a7f8a;
-            --text-muted: #4a4e5a;
-            --green: #34d399;
-            --green-dim: rgba(52,211,153,0.15);
+            --bg-deep: #111111;
+            --bg-card: rgba(255,255,255,0.03);
+            --bg-card-hover: rgba(255,255,255,0.055);
+            --border: rgba(255,255,255,0.06);
+            --text-primary: #e4e0d8;
+            --text-secondary: #6a6860;
+            --text-muted: #444440;
+            --green: #6ee7a0;
+            --green-dim: rgba(110,231,160,0.12);
             --red: #f87171;
-            --red-dim: rgba(248,113,113,0.15);
-            --amber: #fbbf24;
-            --amber-dim: rgba(251,191,36,0.15);
-            --blue: #60a5fa;
-            --blue-dim: rgba(96,165,250,0.15);
-            --purple: #a78bfa;
-            --purple-dim: rgba(167,139,250,0.12);
+            --red-dim: rgba(248,113,113,0.12);
+            --amber: #c4b080;
+            --amber-dim: rgba(196,176,128,0.12);
+            --blue: #7a9eb5;
+            --blue-dim: rgba(122,158,181,0.12);
+            --purple: #888888;
+            --purple-dim: rgba(136,136,136,0.1);
             --mono: 'JetBrains Mono', 'SF Mono', monospace;
             --sans: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
-            --radius: 14px;
-            --radius-sm: 8px;
+            --radius: 8px;
+            --radius-sm: 4px;
         }
 
         /* ─── LIGHT THEME ─── */
         [data-theme="light"] {
-            --bg-deep: #f2f3f7;
-            --bg-card: rgba(0,0,0,0.03);
-            --bg-card-hover: rgba(0,0,0,0.055);
-            --border: rgba(0,0,0,0.08);
-            --text-primary: #1a1c24;
-            --text-secondary: #5c6170;
-            --text-muted: #8b90a0;
-            --green: #16a34a;
-            --green-dim: rgba(22,163,74,0.12);
-            --red: #dc2626;
-            --red-dim: rgba(220,38,38,0.1);
-            --amber: #d97706;
-            --amber-dim: rgba(217,119,6,0.1);
-            --blue: #2563eb;
-            --blue-dim: rgba(37,99,235,0.1);
-            --purple: #7c3aed;
-            --purple-dim: rgba(124,58,237,0.1);
+            --bg-deep: #f5f4f0;
+            --bg-card: rgba(0,0,0,0.025);
+            --bg-card-hover: rgba(0,0,0,0.045);
+            --border: rgba(0,0,0,0.07);
+            --text-primary: #1a1a18;
+            --text-secondary: #5a5a56;
+            --text-muted: #999994;
+            --green: #16803d;
+            --green-dim: rgba(22,128,61,0.1);
+            --red: #b91c1c;
+            --red-dim: rgba(185,28,28,0.08);
+            --amber: #7c5a28;
+            --amber-dim: rgba(124,90,40,0.08);
+            --blue: #4a6a80;
+            --blue-dim: rgba(74,106,128,0.08);
+            --purple: #666666;
+            --purple-dim: rgba(102,102,102,0.08);
         }
         [data-theme="light"] .card-value { color: #111318; }
         [data-theme="light"] .sr-value { color: #111318; }
@@ -72,7 +73,7 @@
         [data-theme="light"] .voice-btn { color: var(--text-secondary); }
         [data-theme="light"] .header-btn { background: rgba(0,0,0,0.03); border-color: rgba(0,0,0,0.1); }
         [data-theme="light"] .header-btn:hover { background: rgba(0,0,0,0.06); }
-        [data-theme="light"] .app-bar-fill { background: linear-gradient(90deg, var(--blue), var(--purple)); }
+        [data-theme="light"] .app-bar-fill { background: var(--green); }
         [data-theme="light"] .badge-green { background: var(--green-dim); color: var(--green); }
         [data-theme="light"] .badge-red { background: var(--red-dim); color: var(--red); }
         [data-theme="light"] .badge-amber { background: var(--amber-dim); color: var(--amber); }
@@ -107,16 +108,7 @@
             transition: background .35s ease, color .35s ease;
         }
 
-        /* Subtle grid texture */
-        body::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
-            background-size: 24px 24px;
-            pointer-events: none;
-            z-index: 0;
-        }
+        /* Zen: 纯净背景，无纹理装饰 */
 
         .app { position: relative; z-index: 1; padding: 20px 28px 60px; max-width: 1440px; margin: 0 auto; }
 
@@ -128,10 +120,14 @@
         }
         .logo { display:flex; align-items:center; gap:12px; }
         .logo-mark {
-            width: 34px; height: 34px; border-radius: 10px;
-            background: linear-gradient(135deg, var(--green), var(--blue));
+            width: 34px; height: 34px; border-radius: 6px;
+            background: var(--green-dim);
+            border: 1px solid rgba(110,231,160,0.2);
             display: flex; align-items: center; justify-content: center;
-            font-size: 16px; font-weight: 800; color: #000; flex-shrink: 0;
+            font-size: 16px; font-weight: 800; color: var(--green); flex-shrink: 0;
+        }
+        [data-theme="light"] .logo-mark {
+            border-color: rgba(22,128,61,0.2);
         }
         .logo h1 {
             font-size: 16px; font-weight: 700; letter-spacing: -0.3px;
@@ -197,15 +193,15 @@
         /* ─── CARDS ─── */
         .card {
             background: var(--bg-card); border:1px solid var(--border);
-            border-radius: var(--radius); padding: 22px;
+            border-radius: var(--radius); padding: 26px 24px;
             transition: background .2s ease, border-color .2s ease;
         }
         .card:hover { background: var(--bg-card-hover); }
         .card-title {
-            font-size:11px; font-weight:700; color:var(--text-muted);
-            text-transform:uppercase; letter-spacing:1.2px; margin-bottom:12px;
+            font-size:11px; font-weight:600; color:var(--text-muted);
+            letter-spacing:0.4px; margin-bottom:14px;
         }
-        .card-value { font-size:30px; font-weight:900; color:var(--text-primary); font-family:var(--mono); }
+        .card-value { font-size:28px; font-weight:700; color:var(--text-primary); font-family:var(--mono); letter-spacing:-0.5px; }
         .card-sub { font-size:12px; color:var(--text-secondary); margin-top:4px; }
 
         /* ─── GRIDS ─── */
@@ -255,7 +251,7 @@
         .app-name { font-size:13px; font-weight:500; }
         .app-time { font-size:11px; color:var(--text-muted); }
         .app-bar { width:80px; height:4px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden; }
-        .app-bar-fill { height:100%; background:linear-gradient(90deg,var(--blue),var(--purple)); border-radius:2px; }
+        .app-bar-fill { height:100%; background:var(--green); border-radius:2px; }
 
         /* ─── POMODORO ─── */
         .pomo-ring-container { display:flex; flex-direction:column; align-items:center; gap:16px; padding:16px 0; }
@@ -449,10 +445,11 @@
         .chat-fab {
             position:fixed; bottom:24px; right:24px; z-index:900;
             width:54px; height:54px; border-radius:50%;
-            background:linear-gradient(135deg,var(--green),var(--blue));
-            border:none; cursor:pointer; font-size:24px;
-            box-shadow:0 4px 20px rgba(0,0,0,0.3);
-            transition:all .3s cubic-bezier(.4,0,.2,1);
+            background:var(--green-dim);
+            border:1px solid var(--green);
+            cursor:pointer; font-size:22px;
+            box-shadow:0 2px 12px rgba(0,0,0,0.2);
+            transition:all .25s ease;
             display:flex; align-items:center; justify-content:center;
         }
         .chat-fab:hover { transform:scale(1.08); box-shadow:0 6px 28px rgba(0,0,0,0.4); }
