@@ -38,46 +38,46 @@ import traceback
 
 SYSTEM = platform.system()
 
-# ─── 设计系统 ───
-# 深色主题（默认）
+# ─── 设计系统（Zen 极简禅意）───
+# 深色主题（默认）— 近黑背景，单绿强调，暖白文字
 _PALETTE_DARK = {
-    "BG_DARK":      "#0d0d14",
-    "BG_PANEL":     "#141420",
-    "BG_INPUT":     "#1c1c2e",
-    "BG_HOVER":     "#2a2a3e",
-    "BG_MSG_AI":    "#1e2a3a",
-    "BG_MSG_USER":  "#1a3a2a",
-    "BG_MSG_NUDGE": "#3a2a1a",
-    "BG_MSG_STATUS":"#1a1a2e",
-    "TEXT_PRIMARY": "#e0e4ec",
-    "TEXT_DIM":     "#6b7084",
-    "TEXT_MUTED":   "#4a4e5a",
-    "GREEN":        "#34d399",
-    "GREEN_DIM":    "#1a3a2a",
-    "AMBER":        "#fbbf24",
+    "BG_DARK":      "#111111",
+    "BG_PANEL":     "#191919",
+    "BG_INPUT":     "#222222",
+    "BG_HOVER":     "#2c2c2c",
+    "BG_MSG_AI":    "#1e1e1e",
+    "BG_MSG_USER":  "#1a2a1e",
+    "BG_MSG_NUDGE": "#252018",
+    "BG_MSG_STATUS":"#1e1e26",
+    "TEXT_PRIMARY": "#e4e0d8",
+    "TEXT_DIM":     "#6a6860",
+    "TEXT_MUTED":   "#444440",
+    "GREEN":        "#6ee7a0",
+    "GREEN_DIM":    "#1a2e20",
+    "AMBER":        "#c4b080",
     "RED":          "#f87171",
-    "BLUE":         "#60a5fa",
-    "PURPLE":       "#a78bfa",
+    "BLUE":         "#7a9eb5",
+    "PURPLE":       "#888888",
 }
-# 浅色主题
+# 浅色主题 — 暖米白背景，森林绿强调，近黑文字
 _PALETTE_LIGHT = {
-    "BG_DARK":      "#f0f1f5",
-    "BG_PANEL":     "#ffffff",
-    "BG_INPUT":     "#e4e6ef",
-    "BG_HOVER":     "#d0d3e0",
-    "BG_MSG_AI":    "#dceeff",
-    "BG_MSG_USER":  "#dcf0e4",
-    "BG_MSG_NUDGE": "#fff3e0",
-    "BG_MSG_STATUS":"#ebebff",
-    "TEXT_PRIMARY": "#1a1c24",
-    "TEXT_DIM":     "#5a5e6a",
-    "TEXT_MUTED":   "#8a8e9a",
-    "GREEN":        "#16a34a",
-    "GREEN_DIM":    "#dcfce7",
-    "AMBER":        "#d97706",
-    "RED":          "#dc2626",
-    "BLUE":         "#2563eb",
-    "PURPLE":       "#7c3aed",
+    "BG_DARK":      "#f5f4f0",
+    "BG_PANEL":     "#fafaf8",
+    "BG_INPUT":     "#ebebea",
+    "BG_HOVER":     "#e2e0da",
+    "BG_MSG_AI":    "#f0f0ec",
+    "BG_MSG_USER":  "#e8efe8",
+    "BG_MSG_NUDGE": "#f0ede4",
+    "BG_MSG_STATUS":"#eeeef6",
+    "TEXT_PRIMARY": "#1a1a18",
+    "TEXT_DIM":     "#5a5a56",
+    "TEXT_MUTED":   "#999994",
+    "GREEN":        "#16803d",
+    "GREEN_DIM":    "#e8f5ec",
+    "AMBER":        "#7c5a28",
+    "RED":          "#b91c1c",
+    "BLUE":         "#4a6a80",
+    "PURPLE":       "#666666",
 }
 
 BG_DARK      = _PALETTE_DARK["BG_DARK"]
