@@ -175,6 +175,11 @@ class DialogueAgent:
         if todo_response:
             return todo_response
 
+        # 检测模型/提供商切换意图
+        model_response = self._detect_model_switch_intent(text)
+        if model_response is not None:
+            return model_response
+
         # 正常对话 → 调用 LLM
         return self._chat_with_llm(text, ctx)
 
@@ -758,6 +763,79 @@ class DialogueAgent:
         else:
             return f"❓ 未知命令: {text}。输入 /help 查看可用命令。"
 
+    def _detect_model_switch_intent(self, text: str) -> Optional[str]:
+        """
+        检测模型/提供商查询或切换意图。
+
+        支持：
+          - 查询当前用的模型/提供商
+          - 切换到指定提供商（DeepSeek / 通义 / Claude / OpenAI / ModelScope）
+          - 查看所有已配置的提供商
+
+        返回处理完的回复字符串，或 None（未命中）。
+        """
+        import re
+        t = text.strip()
+
+        # ---- 查询当前模型 ----
+        if re.search(
+            r"(?:用的|用了|在用|当前|现在用|现在是|用什么|用哪个)[^？?]*?(?:模型|AI|提供商|provider)|"
+            r"(?:模型|提供商|AI)[^？?]*?(?:是什么|是哪个|是哪家|怎么配|怎么选)|"
+            r"(?:哪个|什么)模型|现在.*?模型",
+            t,
+        ):
+            provider = get_llm_provider()
+            enabled = provider.get_enabled_providers()
+            if not enabled:
+                msg = "⚠️ 还没有配置任何 API Key，可以在 Web 设置页面（http://localhost:5000）添加"
+            else:
+                active = provider.get_active_provider()
+                active_cfg = provider.get_config(active)
+                if len(enabled) == 1:
+                    msg = f"🤖 当前使用：{active_cfg.display_name}（{active_cfg.text_model}）"
+                else:
+                    names = []
+                    for p in enabled:
+                        cfg = provider.get_config(p)
+                        names.append(f"{cfg.display_name}（{cfg.text_model}）")
+                    msg = (
+                        f"🤖 已配置 {len(enabled)} 个提供商，正在轮询使用：\n"
+                        + "\n".join(f"  • {n}" for n in names)
+                    )
+            self._add_message("user", t)
+            self._add_message("assistant", msg)
+            return msg
+
+        # ---- 切换提供商 ----
+        if not re.search(r"切换|换[一个]?(?:下|个)?|改[为成用]|切[换到]|用(?!于)", t):
+            return None
+
+        _PROVIDER_KEYWORDS = {
+            "modelscope": ["modelscope", "魔搭"],
+            "dashscope": ["dashscope", "百炼", "通义", "qwen", "千问"],
+            "deepseek": ["deepseek", "深度求索"],
+            "openai": ["openai", "chatgpt", "gpt"],
+            "claude": ["claude", "anthropic"],
+        }
+
+        provider = get_llm_provider()
+        for prov_id, keywords in _PROVIDER_KEYWORDS.items():
+            if any(kw.lower() in t.lower() for kw in keywords):
+                cfg = provider.get_config(prov_id)
+                if not cfg:
+                    continue
+                if not cfg.api_key:
+                    msg = f"❌ {cfg.display_name} 还没有配置 API Key，可以在 Web 设置页面添加后再切换"
+                else:
+                    from attention.core.api_settings import get_api_settings
+                    get_api_settings().set_active_provider(prov_id)
+                    msg = f"✅ 已切换到 {cfg.display_name}（{cfg.text_model}）"
+                self._add_message("user", t)
+                self._add_message("assistant", msg)
+                return msg
+
+        return None
+
     def _chat_with_llm(self, text: str, ctx: SessionContext) -> str:
         """调用 LLM 生成多轮对话回复（使用 OpenAI 客户端，支持流式）"""
         self._add_message("user", text)
@@ -772,7 +850,15 @@ class DialogueAgent:
 
         try:
             provider = get_llm_provider()
-            cfg = provider.get_config(provider.get_active_provider())
+            # 多提供商轮询：若配置了多个 API key，则均衡分配请求；否则用当前激活的
+            prov_name = provider.next_provider_roundrobin()
+            cfg = provider.get_config(prov_name)
+            if not cfg or not cfg.api_key:
+                # 回退到 active provider
+                prov_name = provider.get_active_provider()
+                cfg = provider.get_config(prov_name)
+
+            logger.debug(f"对话使用提供商: {prov_name} ({cfg.text_model if cfg else 'N/A'})")
             oai_client = OpenAI(base_url=cfg.api_base, api_key=cfg.api_key)
 
             stream = oai_client.chat.completions.create(

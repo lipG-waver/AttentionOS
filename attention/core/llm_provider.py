@@ -147,6 +147,7 @@ class MultiLLMClient:
     def __init__(self):
         self._configs: Dict[str, ProviderConfig] = {}
         self._active_provider: str = LLMProvider.MODELSCOPE
+        self._rotation_index: int = 0  # 轮询索引，用于在多个提供商之间均衡分配请求
         self._load_defaults()
 
     def _load_defaults(self):
@@ -201,6 +202,24 @@ class MultiLLMClient:
     def get_suggested_models(self, provider: str) -> Dict[str, List[str]]:
         """获取提供商常见模型建议列表"""
         return SUGGESTED_MODELS.get(provider, {"text": [], "vision": []})
+
+    def get_enabled_providers(self) -> List[str]:
+        """返回所有已配置 API key 的提供商列表（按注册顺序）"""
+        return [p for p, cfg in self._configs.items() if cfg.api_key]
+
+    def next_provider_roundrobin(self) -> str:
+        """
+        轮询选取下一个可用提供商。
+
+        若只有一个可用提供商则直接返回；若没有则返回当前 active_provider（
+        调用方应在此之后检查 api_key 是否已配置）。
+        """
+        enabled = self.get_enabled_providers()
+        if not enabled:
+            return self._active_provider
+        idx = self._rotation_index % len(enabled)
+        self._rotation_index = (idx + 1) % len(enabled)
+        return enabled[idx]
 
     # ---------------------------------------------------------------- #
     #  内部 — 提供商回退链
