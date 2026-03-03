@@ -266,6 +266,17 @@
                 <div class="card"><div class="card-title">活动率曲线</div><div class="chart-box"><canvas id="activityChart"></canvas></div></div>
                 <div class="card"><div class="card-title">应用使用排行</div><div class="app-list" id="appList"></div></div>
             </div>
+
+            <!-- App Visualization: All apps with categories -->
+            <div class="card" style="margin-bottom:20px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                    <div class="card-title" style="margin-bottom:0;">🖥 我的应用</div>
+                    <span style="font-size:11px;color:var(--text-muted);">最近30天 · 点击分类标签可修改</span>
+                </div>
+                <div id="appsVizList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;">
+                    <div style="color:var(--text-muted);font-size:13px;padding:12px 0;">加载中...</div>
+                </div>
+            </div>
         </div>
 
 
@@ -411,6 +422,13 @@
                             <label class="setting-label">开机自启</label>
                             <label class="switch"><input type="checkbox" id="autoStartToggle" onchange="toggleAutoStart(this.checked)"><span class="slider"></span></label>
                         </div>
+                        <div class="setting-group">
+                            <label class="setting-label">截图分析（发送截图给 AI）</label>
+                            <label class="switch"><input type="checkbox" id="screenshotAnalysisToggle" onchange="toggleScreenshotAnalysis(this.checked)"><span class="slider"></span></label>
+                        </div>
+                    </div>
+                    <div id="screenshotAnalysisHint" style="font-size:12px;color:var(--text-muted);margin-top:-12px;margin-bottom:8px;line-height:1.6;">
+                        默认关闭：焦点应用 + 网页标题 + 键鼠活动已能捕获 99% 信息，截图分析为可选增强。
                     </div>
                     <div id="autoStartStatus" style="font-size:12px;color:var(--text-muted);margin-top:-12px;margin-bottom:8px;"></div>
 
