@@ -46,6 +46,12 @@ class Config:
         "style": "encouraging",       # 提醒风格: encouraging/neutral/strict
     }
     
+    # 截图分析配置（发送截图给多模态大语言模型）
+    # 默认关闭：活动监控已能捕获足够信息（焦点应用、网页标题、键鼠活动），截图分析为锦上添花
+    SCREENSHOT_ANALYSIS = {
+        "enabled": False,  # 是否将截图发送给多模态大语言模型
+    }
+
     # 持久离开跳过配置
     AWAY_SKIP = {
         "enabled": True,          # 是否启用：检测到用户持久离开时跳过截图和LLM分析

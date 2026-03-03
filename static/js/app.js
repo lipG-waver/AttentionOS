@@ -97,11 +97,11 @@
                 breadcrumbTitle.textContent = tabTitles[name] || name;
             }
 
-            if (name === 'dashboard') { ensureChartsInit(); loadData(); loadWorkStartData(); }
+            if (name === 'dashboard') { ensureChartsInit(); loadData(); loadWorkStartData(); loadAppsData(); }
             if (name === 'todo') loadTodos();
             if (name === 'chatlog') { loadChatLogDates(); }
             if (name === 'plugins') { loadPlugins(); }
-            if (name === 'settings') { loadAPIProviders(); loadAutoStartStatus(); }
+            if (name === 'settings') { loadAPIProviders(); loadAutoStartStatus(); loadScreenshotAnalysisSetting(); }
 
             window.scrollTo({top: 0, behavior: 'smooth'});
         }
@@ -369,6 +369,90 @@
             if(l.includes('code')||l.includes('studio'))return'💻';if(l.includes('chrome')||l.includes('safari')||l.includes('firefox'))return'🌐';
             if(l.includes('terminal')||l.includes('iterm'))return'⌨️';if(l.includes('slack')||l.includes('teams'))return'💬';
             if(l.includes('微信'))return'💬';if(l.includes('music'))return'🎵';if(l.includes('notion'))return'📝';return'📱';
+        }
+
+        // ==================== APPS VISUALIZATION ====================
+        const CAT_LABELS = {work:'工作', communication:'沟通', learning:'学习', entertainment:'娱乐', unknown:'其他'};
+        const CAT_COLORS = {work:'green', communication:'blue', learning:'purple', entertainment:'red', unknown:''};
+
+        async function loadAppsData() {
+            const el = document.getElementById('appsVizList');
+            if (!el) return;
+            try {
+                const r = await fetch('/api/apps');
+                const data = await r.json();
+                renderAppsViz(data.apps || []);
+            } catch(e) {
+                el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">加载失败</div>';
+            }
+        }
+
+        function renderAppsViz(apps) {
+            const el = document.getElementById('appsVizList');
+            if (!el) return;
+            if (!apps.length) {
+                el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:12px 0;">暂无记录，使用一段时间后会在此显示</div>';
+                return;
+            }
+            el.innerHTML = apps.map(a => {
+                const mins = a.minutes || 0;
+                const timeStr = mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`;
+                const cat = a.category || 'unknown';
+                const catColor = CAT_COLORS[cat] || '';
+                const badgeClass = 'app-cat-select badge' + (catColor ? ' badge-'+catColor : '');
+                const opts = Object.entries(CAT_LABELS).map(([v,l]) =>
+                    `<option value="${v}"${v===cat?' selected':''}>${l}</option>`
+                ).join('');
+                const overrideMark = a.is_user_overridden ? '<span style="font-size:9px;color:var(--blue);margin-left:4px;vertical-align:middle;">●</span>' : '';
+                return `<div class="app-viz-item">
+                    <div class="app-ico">${getAppEmoji(a.app)}</div>
+                    <div class="app-viz-body">
+                        <div class="app-viz-name">${a.app||'未知'}${overrideMark}</div>
+                        <div class="app-viz-time">${timeStr}</div>
+                    </div>
+                    <select class="${badgeClass}" data-app="${encodeURIComponent(a.app)}" onchange="updateAppCategory(this)" title="${a.is_user_overridden?'已自定义分类，点击修改':'自动分类，点击修改'}">${opts}</select>
+                </div>`;
+            }).join('');
+        }
+
+        async function updateAppCategory(selectEl) {
+            const appName = decodeURIComponent(selectEl.dataset.app);
+            const category = selectEl.value;
+            const catColor = CAT_COLORS[category] || '';
+            selectEl.className = 'app-cat-select badge' + (catColor ? ' badge-'+catColor : '');
+            try {
+                await fetch('/api/apps/category', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({app: appName, category})
+                });
+            } catch(e) {
+                console.error('updateAppCategory failed:', e);
+            }
+        }
+
+        // ==================== SCREENSHOT ANALYSIS SETTING ====================
+        async function loadScreenshotAnalysisSetting() {
+            try {
+                const r = await fetch('/api/settings/screenshot-analysis');
+                const data = await r.json();
+                const toggle = document.getElementById('screenshotAnalysisToggle');
+                if (toggle) toggle.checked = !!data.enabled;
+            } catch(e) {
+                console.error('loadScreenshotAnalysisSetting failed:', e);
+            }
+        }
+
+        async function toggleScreenshotAnalysis(enabled) {
+            try {
+                await fetch('/api/settings/screenshot-analysis', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({enabled})
+                });
+            } catch(e) {
+                console.error('toggleScreenshotAnalysis failed:', e);
+            }
         }
 
         // ==================== WEBSOCKET ====================

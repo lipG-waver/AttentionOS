@@ -13,7 +13,7 @@ from typing import Optional
 
 from attention.config import Config
 from attention.core.screenshot import capture_screen, get_capturer
-from attention.core.analyzer import analyze_screen, AnalysisResult
+from attention.core.analyzer import analyze_screen, AnalysisResult, get_analyzer
 from attention.core.autostart_manager import AutoStartManager
 from attention.core.database import save_to_database, get_database
 from attention.core.activity_monitor import (
@@ -126,14 +126,31 @@ class AttentionAgent:
                 self._log_away_status(idle_seconds)
                 return
 
-        # 1. 截图
-        image_data, screenshot_path = capture_screen()
-        if image_data is None:
-            logger.warning("截图失败，跳过本次分析")
-            return
+        # 1. 截图 + 分析（可选，默认关闭；活动监控已能捕获足够信息）
+        image_data = None
+        screenshot_path = None
+        analysis = None
+        raw_response = ""
+        screenshot_enabled = self.config.SCREENSHOT_ANALYSIS.get("enabled", False)
+        if not screenshot_enabled:
+            # 从 app_settings 动态读取（允许运行时通过 Web 设置变更）
+            try:
+                from attention.core.app_settings import get_app_settings
+                screenshot_enabled = get_app_settings().get("screenshot_analysis_enabled", False)
+            except Exception:
+                pass
 
-        # 2. 截图分析
-        analysis, raw_response = analyze_screen(image_data)
+        if screenshot_enabled:
+            image_data, screenshot_path = capture_screen()
+            if image_data is None:
+                logger.warning("截图失败，跳过截图分析")
+            else:
+                # 2. 截图分析
+                analysis, raw_response = analyze_screen(image_data)
+
+        # 截图分析未启用时使用默认空结果（状态融合仍可依赖活动监控数据）
+        if analysis is None:
+            analysis = AnalysisResult()
 
         # 3. 获取活动状态
         activity_state = None
@@ -209,10 +226,13 @@ class AttentionAgent:
         """显示分析结果"""
         time_str = datetime.now().strftime('%H:%M:%S')
 
-        status_emoji = get_status_emoji(analysis.work_status)
-        print(f"\n[{time_str}] {status_emoji} {analysis.work_status}")
+        if analysis and analysis.work_status and analysis.work_status != "未知":
+            status_emoji = get_status_emoji(analysis.work_status)
+            print(f"\n[{time_str}] {status_emoji} {analysis.work_status}")
+        else:
+            print(f"\n[{time_str}] 📊 活动监控中（截图分析已关闭）")
 
-        if analysis.applications_detected:
+        if analysis and analysis.applications_detected:
             print(f"  📱 检测应用: {', '.join(analysis.applications_detected[:3])}")
 
         if activity_state:

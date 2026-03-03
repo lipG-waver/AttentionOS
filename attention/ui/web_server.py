@@ -1070,6 +1070,101 @@ async def list_memos():
     return {"memos": memos[:50]}
 
 
+# ==================== 应用分类 API ====================
+
+@app.get("/api/apps")
+@_safe_route
+async def get_all_apps():
+    """获取用户使用过的应用及其分类（最近30天聚合）"""
+    from datetime import timedelta
+    from attention.core.app_category_store import get_app_category_store
+    from attention.core.state_fusion import categorize_app
+
+    db = get_database()
+    store = get_app_category_store()
+
+    end_time = datetime.now()
+    start_time = end_time - timedelta(days=30)
+    records = db.get_records(start_time=start_time, end_time=end_time, limit=50000)
+
+    # 按 app 聚合记录数（每条记录 ≈ CHECK_INTERVAL 秒）
+    app_counts: dict = {}
+    for r in records:
+        fused = r.get("fused_state", {})
+        app_name = (fused.get("active_window_app") or "").strip()
+        if not app_name:
+            continue
+        if app_name not in app_counts:
+            app_counts[app_name] = 0
+        app_counts[app_name] += 1
+
+    interval = Config.CHECK_INTERVAL
+    result = []
+    all_overrides = store.get_all_overrides()
+    for app_name, count in app_counts.items():
+        minutes = max(1, round(count * interval / 60))
+        auto_cat = categorize_app(app_name)
+        user_cat = store.get_category(app_name)
+        result.append({
+            "app": app_name,
+            "minutes": minutes,
+            "auto_category": auto_cat,
+            "category": user_cat,
+            "is_user_overridden": app_name.lower() in all_overrides,
+        })
+
+    result.sort(key=lambda x: -x["minutes"])
+    return {"apps": result}
+
+
+@app.post("/api/apps/category")
+@_safe_route
+async def update_app_category(request: Request):
+    """更新应用分类（用户自定义覆盖）"""
+    from attention.core.app_category_store import get_app_category_store
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    app_name = (body.get("app") or "").strip()
+    category = (body.get("category") or "").strip()
+    if not app_name or not category:
+        return {"success": False, "error": "app 和 category 不能为空"}
+    store = get_app_category_store()
+    ok = store.set_category(app_name, category)
+    if not ok:
+        return {"success": False, "error": f"无效的分类: {category}"}
+    return {"success": True, "app": app_name, "category": category}
+
+
+# ==================== 截图分析设置 API ====================
+
+@app.get("/api/settings/screenshot-analysis")
+@_safe_route
+async def get_screenshot_analysis_setting():
+    """获取截图分析功能开关状态"""
+    from attention.core.app_settings import get_app_settings
+    enabled = bool(get_app_settings().get("screenshot_analysis_enabled", False))
+    return {"enabled": enabled}
+
+
+@app.post("/api/settings/screenshot-analysis")
+@_safe_route
+async def set_screenshot_analysis_setting(request: Request):
+    """设置截图分析功能开关（运行时生效）"""
+    from attention.core.app_settings import get_app_settings
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    enabled = bool(body.get("enabled", False))
+    settings = get_app_settings()
+    settings.set("screenshot_analysis_enabled", enabled)
+    # 同步更新内存中的 Config（同进程内立即生效）
+    Config.SCREENSHOT_ANALYSIS["enabled"] = enabled
+    return {"success": True, "enabled": enabled}
+
+
 # ==================== 静态文件 ====================
 
 static_dir = Config.BASE_DIR / "static"

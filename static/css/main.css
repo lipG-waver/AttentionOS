@@ -253,6 +253,35 @@
         .app-bar { width:80px; height:4px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden; }
         .app-bar-fill { height:100%; background:var(--green); border-radius:2px; }
 
+        /* ─── APP VISUALIZATION (全量应用 + 分类) ─── */
+        .app-viz-item {
+            display:flex; align-items:center; gap:10px;
+            padding:10px 12px; border-radius:var(--radius-sm);
+            background:var(--bg-card); border:1px solid var(--border);
+            transition:background .15s;
+        }
+        .app-viz-item:hover { background:var(--bg-card-hover); }
+        .app-viz-body { flex:1; min-width:0; }
+        .app-viz-name {
+            font-size:12px; font-weight:500; color:var(--text-primary);
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        }
+        .app-viz-time { font-size:11px; color:var(--text-muted); margin-top:2px; }
+        .app-cat-select {
+            appearance:none; -webkit-appearance:none;
+            border:none; cursor:pointer; font-family:var(--sans);
+            font-size:11px; font-weight:600;
+            padding:3px 8px; border-radius:20px;
+            flex-shrink:0;
+        }
+        .app-cat-select:focus { outline:none; }
+        .app-cat-select.badge-green { background:var(--green-dim); color:var(--green); }
+        .app-cat-select.badge-blue  { background:var(--blue-dim);  color:var(--blue); }
+        .app-cat-select.badge-purple{ background:var(--purple-dim);color:var(--purple); }
+        .app-cat-select.badge-red   { background:var(--red-dim);   color:var(--red); }
+        .app-cat-select.badge       { background:rgba(255,255,255,0.06); color:var(--text-secondary); }
+        [data-theme="light"] .app-cat-select.badge { background:rgba(0,0,0,0.06); }
+
         /* ─── POMODORO ─── */
         .pomo-ring-container { display:flex; flex-direction:column; align-items:center; gap:16px; padding:16px 0; }
         .pomo-ring { position:relative; width:200px; height:200px; }
