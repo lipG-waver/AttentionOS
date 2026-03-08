@@ -185,16 +185,18 @@ class AppManager:
 
     # ---------- 启动后台服务（可以从任何线程调用） ----------
 
-    def _setup_autostart_on_first_launch(self):
-        """首次启动时自动设置开机自启（后台静默执行）"""
+    def _verify_autostart(self):
+        """每次启动时验证开机自启配置是否有效，必要时自动修复（后台静默执行）"""
         try:
             from attention.core.app_settings import get_app_settings
             from attention.core.autostart_manager import AutoStartManager
 
             settings = get_app_settings()
+            mgr = AutoStartManager()
+
             if not settings.has_launched:
+                # 首次启动：自动启用开机自启
                 logger.info("首次启动，正在自动设置开机自启...")
-                mgr = AutoStartManager()
                 success = mgr.enable()
                 settings.auto_start_enabled = success
                 settings.mark_launched()
@@ -202,10 +204,20 @@ class AppManager:
                     logger.info("开机自启已自动配置")
                 else:
                     logger.warning("开机自启自动配置失败（可在设置中手动开启）")
+            elif settings.auto_start_enabled:
+                # 后续启动：验证自启动配置文件是否仍然存在，若丢失则自动修复
+                settings.mark_launched()
+                if not mgr.is_enabled():
+                    logger.warning("开机自启配置文件丢失，正在自动修复...")
+                    success = mgr.enable()
+                    if success:
+                        logger.info("开机自启已自动修复")
+                    else:
+                        logger.warning("开机自启修复失败，请在设置中手动重新开启")
             else:
                 settings.mark_launched()
         except Exception as e:
-            logger.warning(f"首次启动自启动设置异常: {e}")
+            logger.warning(f"开机自启验证异常: {e}")
 
     def _start_background_services(self):
         """在后台线程中启动 Web、Agent、Break、Checkin、Overlay 等服务"""
@@ -213,8 +225,8 @@ class AppManager:
         from attention.ui.web_server import run_server
         from attention.main import AttentionAgent
 
-        # 首次启动自动配置开机自启（后台）
-        threading.Thread(target=self._setup_autostart_on_first_launch, daemon=True).start()
+        # 每次启动验证开机自启配置（首次自动启用，后续检测修复）
+        threading.Thread(target=self._verify_autostart, daemon=True).start()
 
         # Web 服务器
         web_thread = threading.Thread(
