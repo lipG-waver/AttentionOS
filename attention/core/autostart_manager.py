@@ -1,6 +1,6 @@
 """
 开机自启动管理器
-支持 macOS（LaunchAgent）、Windows（Startup 快捷方式）、Linux（systemd）
+支持 macOS（LaunchAgent）、Windows（Startup 快捷方式）、Linux（XDG autostart + systemd）
 """
 import os
 import sys
@@ -22,6 +22,14 @@ class AutoStartManager:
         if getattr(sys, "frozen", False):
             return sys.executable
         return os.path.abspath(sys.argv[0])
+
+    def _get_exec_command(self) -> str:
+        """获取完整的可执行命令（非打包模式自动补全 Python 解释器路径）"""
+        if getattr(sys, "frozen", False):
+            # 打包后的可执行文件，直接运行
+            return self.app_path
+        # 开发模式：必须用当前 Python 解释器运行脚本
+        return f"{sys.executable} {self.app_path}"
 
     # ==================================================================
     # 公开接口
@@ -98,6 +106,16 @@ class AutoStartManager:
     def _macos_plist_content(self) -> str:
         minimized = Config.AUTO_START.get("minimize", True)
         extra_arg = "<string>--minimized</string>" if minimized else ""
+
+        # 非打包模式需要把 Python 解释器和脚本路径分别作为数组元素
+        if getattr(sys, "frozen", False):
+            program_args = f"<string>{self.app_path}</string>"
+        else:
+            program_args = (
+                f"<string>{sys.executable}</string>\n"
+                f"        <string>{self.app_path}</string>"
+            )
+
         return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -106,7 +124,7 @@ class AutoStartManager:
     <string>com.{self.app_name}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{self.app_path}</string>
+        {program_args}
         {extra_arg}
     </array>
     <key>WorkingDirectory</key>
@@ -196,7 +214,14 @@ class AutoStartManager:
             shortcut_path = startup_dir / f"{self.app_name}.lnk"
             shell = win32com.client.Dispatch("WScript.Shell")
             shortcut = shell.CreateShortcut(str(shortcut_path))
-            shortcut.TargetPath = str(self.app_path)
+
+            if getattr(sys, "frozen", False):
+                shortcut.TargetPath = str(self.app_path)
+            else:
+                # 开发模式：目标是 Python 解释器，脚本路径作为参数
+                shortcut.TargetPath = sys.executable
+                shortcut.Arguments = f'"{self.app_path}"'
+
             shortcut.WorkingDirectory = str(Config.BASE_DIR)
             shortcut.Description = "个人注意力管理助手"
             shortcut.save()
@@ -249,55 +274,132 @@ class AutoStartManager:
         return (startup_dir / f"{self.app_name}.lnk").exists()
 
     # ==================================================================
-    # Linux — systemd 用户服务
+    # Linux — XDG autostart（主）+ systemd 用户服务（副）
     # ==================================================================
 
-    def _enable_linux(self) -> bool:
-        service_content = f"""[Unit]
-Description={self.app_name} - 个人注意力管理助手
-After=graphical-session.target
+    # --- XDG autostart（.desktop 文件，兼容所有桌面环境） ---
 
-[Service]
-Type=simple
-ExecStart={self.app_path}
-WorkingDirectory={Config.BASE_DIR}
-Restart=on-failure
-RestartSec=10
+    @property
+    def _xdg_autostart_path(self) -> Path:
+        return Path.home() / ".config" / "autostart" / f"{self.app_name}.desktop"
 
-[Install]
-WantedBy=default.target
-"""
-        service_dir = Path.home() / ".config" / "systemd" / "user"
-        service_dir.mkdir(parents=True, exist_ok=True)
-        service_file = service_dir / f"{self.app_name}.service"
-        service_file.write_text(service_content)
+    def _xdg_desktop_content(self) -> str:
+        exec_cmd = self._get_exec_command()
+        return (
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            f"Name={self.app_name}\n"
+            "Comment=个人注意力管理助手\n"
+            f"Exec={exec_cmd}\n"
+            f"WorkingDirectory={Config.BASE_DIR}\n"
+            "Hidden=false\n"
+            "NoDisplay=false\n"
+            "X-GNOME-Autostart-enabled=true\n"
+        )
 
-        os.system(f"systemctl --user enable {self.app_name}.service 2>/dev/null")
+    def _enable_linux_xdg(self) -> bool:
+        desktop_file = self._xdg_autostart_path
+        desktop_file.parent.mkdir(parents=True, exist_ok=True)
+        desktop_file.write_text(self._xdg_desktop_content(), encoding="utf-8")
+        print(f"[Linux] XDG 自启动文件已创建: {desktop_file}")
+        return True
+
+    def _is_enabled_linux_xdg(self) -> bool:
+        return self._xdg_autostart_path.exists()
+
+    # --- systemd 用户服务（适合无桌面 / 服务器环境） ---
+
+    @property
+    def _systemd_service_path(self) -> Path:
+        return Path.home() / ".config" / "systemd" / "user" / f"{self.app_name}.service"
+
+    def _systemd_service_content(self) -> str:
+        exec_cmd = self._get_exec_command()
+        return (
+            "[Unit]\n"
+            f"Description={self.app_name} - 个人注意力管理助手\n"
+            "After=graphical-session.target\n"
+            "\n"
+            "[Service]\n"
+            "Type=simple\n"
+            f"ExecStart={exec_cmd}\n"
+            f"WorkingDirectory={Config.BASE_DIR}\n"
+            "Restart=on-failure\n"
+            "RestartSec=10\n"
+            "\n"
+            "[Install]\n"
+            "WantedBy=default.target\n"
+        )
+
+    def _enable_linux_systemd(self) -> bool:
+        service_file = self._systemd_service_path
+        service_file.parent.mkdir(parents=True, exist_ok=True)
+        service_file.write_text(self._systemd_service_content(), encoding="utf-8")
+        try:
+            subprocess.run(
+                ["systemctl", "--user", "enable", f"{self.app_name}.service"],
+                capture_output=True, text=True, timeout=5,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass  # systemctl 不存在或超时，不影响 XDG 路径
         print(f"[Linux] systemd 服务已创建: {service_file}")
         return True
 
-    def _disable_linux(self) -> bool:
-        service_name = f"{self.app_name}.service"
-        os.system(f"systemctl --user stop {service_name} 2>/dev/null")
-        os.system(f"systemctl --user disable {service_name} 2>/dev/null")
+    def _is_enabled_linux_systemd(self) -> bool:
+        return self._systemd_service_path.exists()
 
-        service_file = Path.home() / ".config" / "systemd" / "user" / service_name
+    # --- 统一入口 ---
+
+    def _enable_linux(self) -> bool:
+        # 主路径：XDG autostart，兼容所有桌面环境（GNOME/KDE/XFCE/…）
+        xdg_ok = self._enable_linux_xdg()
+
+        # 副路径：systemd 用户服务（适合无桌面 / 服务器场景），失败不影响主路径
+        try:
+            self._enable_linux_systemd()
+        except Exception as e:
+            print(f"[Linux] systemd 服务创建失败（不影响 XDG 自启动）: {e}")
+
+        return xdg_ok
+
+    def _disable_linux(self) -> bool:
+        # 删除 XDG autostart 文件
+        desktop_file = self._xdg_autostart_path
+        if desktop_file.exists():
+            desktop_file.unlink()
+            print(f"[Linux] XDG 自启动文件已删除: {desktop_file}")
+
+        # 停用并删除 systemd 服务
+        service_name = f"{self.app_name}.service"
+        try:
+            subprocess.run(
+                ["systemctl", "--user", "stop", service_name],
+                capture_output=True, timeout=5,
+            )
+            subprocess.run(
+                ["systemctl", "--user", "disable", service_name],
+                capture_output=True, timeout=5,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+        service_file = self._systemd_service_path
         if service_file.exists():
             service_file.unlink()
 
-        os.system("systemctl --user daemon-reload 2>/dev/null")
-
-        autostart_file = Path.home() / ".config" / "autostart" / f"{self.app_name}.desktop"
-        if autostart_file.exists():
-            autostart_file.unlink()
+        try:
+            subprocess.run(
+                ["systemctl", "--user", "daemon-reload"],
+                capture_output=True, timeout=5,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
 
         return True
 
     def _is_enabled_linux(self) -> bool:
-        service_file = (
-            Path.home() / ".config" / "systemd" / "user" / f"{self.app_name}.service"
-        )
-        return service_file.exists()
+        # 任一方式存在即视为已启用
+        return self._is_enabled_linux_xdg() or self._is_enabled_linux_systemd()
 
 
 # ------------------------------------------------------------------
